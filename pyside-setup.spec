@@ -81,8 +81,25 @@ BuildRoot:	%{tmpdir}/%{name}-%{version}-root-%(id -u -n)
 %define		skip_post_check_so	libshiboken6.*.so.* libpyside6.*.so.* libpyside6qml.*.so.*
 
 %description
+Qt For Python
 
-%description -l pl.UTF-8
+%package -n python3-PySide6
+Summary:	-
+Group:		-
+
+%description -n python3-PySide6
+
+%package -n shiboken6
+Summary:	-
+Group:		-
+
+%description -n shiboken6
+
+%package -n shiboken6-generator
+Summary:	-
+Group:		-
+
+%description -n shiboken6-generator
 
 %package apidocs
 Summary:	API documentation for Python %{module} module
@@ -101,7 +118,7 @@ Dokumentacja API modułu Pythona %{module}.
 %patch -P 0 -p1
 
 # fix #!/usr/bin/env python -> #!/usr/bin/python:
-%{__sed} -E -i -e '1s,#!\s*/usr/bin/env\s+python(\s|$),#!%{__python3}\\1,' \
+%{__sed} -E -i -e '1s,#!\s*/usr/bin/env\s+python(\s|$),#!%{__python3}\1,' \
 	sources/pyside-tools/pyside_tool.py \
 	sources/shiboken6/shiboken_tool.py
 
@@ -143,6 +160,9 @@ CXXFLAGS="${CXXFLAGS:-%rpmcppflags %rpmcxxflags}"; export CXXFLAGS; \
 	--skip-cmake \
 	--reuse-build
 
+# Atrocious (dereferencing all symlinks) copy of ffmpeg libs.
+%{__rm} -r $RPM_BUILD_ROOT%{py3_sitedir}/PySide6/Qt/lib
+
 %py3_ocomp $RPM_BUILD_ROOT%{py3_sitedir}
 
 install -d $RPM_BUILD_ROOT%{_examplesdir}/python3-PySide6-%{version}
@@ -153,24 +173,89 @@ find $RPM_BUILD_ROOT%{_examplesdir}/python3-PySide6-%{version} -name '*.py' \
 %clean
 rm -rf $RPM_BUILD_ROOT
 
-%files
+%files -n python3-PySide6
 %defattr(644,root,root,755)
 %doc LICENSES README.md README.pyside6*.md
-%doc README.shiboken6-generator.md
-%doc README.shiboken6.md
 %{_bindir}/pyside6-*
 %{_bindir}/shiboken6
 %{_bindir}/shiboken6-genpyi
 %dir %{py3_sitedir}/PySide6
-%dir %{py3_sitedir}/shiboken6
-%dir %{py3_sitedir}/shiboken6_generator
+%dir %{py3_sitedir}/PySide6/Qt
+%{py3_sitedir}/PySide6/Qt/lib64
+%dir %{py3_sitedir}/PySide6/Qt/libexec
+%attr(755,root,root) %{py3_sitedir}/PySide6/Qt/libexec/*
+%{py3_sitedir}/PySide6/Qt/modules
+%{py3_sitedir}/PySide6/QtAsyncio
+%doc %{py3_sitedir}/PySide6/doc
+%dir %{py3_sitedir}/PySide6/scripts
+%{py3_sitedir}/PySide6/scripts/__pycache__
+%{py3_sitedir}/PySide6/scripts/*_lib
+%{py3_sitedir}/PySide6/scripts/project
+%{py3_sitedir}/PySide6/scripts/*.txt
+%{py3_sitedir}/PySide6/scripts/__init__.py
+%{py3_sitedir}/PySide6/scripts/android_deploy.py
+%{py3_sitedir}/PySide6/scripts/deploy.py
+%{py3_sitedir}/PySide6/scripts/metaobjectdump.py
+%{py3_sitedir}/PySide6/scripts/project.py
+%attr(755,root,root) %{py3_sitedir}/PySide6/scripts/pyside_tool.py
+%{py3_sitedir}/PySide6/scripts/qml.py
+%{py3_sitedir}/PySide6/scripts/qtpy2cpp.py
+%{py3_sitedir}/PySide6/support
+%dir %{py3_sitedir}/PySide6/typesystems
+%{py3_sitedir}/PySide6/typesystems/*.xml
+%{py3_sitedir}/PySide6/*.pyi
+%attr(755,root,root) %{py3_sitedir}/PySide6/Qt*.abi3.so
+%attr(755,root,root) %{py3_sitedir}/PySide6/libpyside6*.abi3.so.6.8
+%{py3_sitedir}/PySide6/*.py
+%{py3_sitedir}/PySide6/py.typed
+%{py3_sitedir}/PySide6/__pycache__
+%{py3_sitedir}/PySide6/assistant
+%{py3_sitedir}/PySide6/balsam
+%{py3_sitedir}/PySide6/balsamui
+%{py3_sitedir}/PySide6/designer
+%{py3_sitedir}/PySide6/linguist
+%{py3_sitedir}/PySide6/lrelease
+%{py3_sitedir}/PySide6/lupdate
+%{py3_sitedir}/PySide6/qmlformat
+%{py3_sitedir}/PySide6/qmllint
+%{py3_sitedir}/PySide6/qmlls
+%{py3_sitedir}/PySide6/qsb
+%{py3_sitedir}/PySide6/svgtoqml
+%{py3_sitedir}/PySide6-%{version}-py*.egg-info
 
-#%{py3_sitedir}/%{module}/*.py
-#%attr(755,root,root) %{py3_sitedir}/%{module}/*.so
-#%{py3_sitedir}/%{module}/__pycache__
-#%{py3_sitedir}/%{module}-%{version}-py*.egg-info
+#devel?
+%{py3_sitedir}/PySide6/glue
+%{py3_sitedir}/PySide6/include
+%{py3_sitedir}/PySide6/typesystems/glue
 
 %{_examplesdir}/python3-PySide6-%{version}
+
+%files -n shiboken6
+%defattr(644,root,root,755)
+%doc LICENSES README.shiboken6.md
+%dir %{py3_sitedir}/shiboken6
+%{py3_sitedir}/shiboken6/__pycache__
+%{py3_sitedir}/shiboken6/*.py
+%{py3_sitedir}/shiboken6/*.pyi
+%{py3_sitedir}/shiboken6/py.typed
+%attr(755,root,root) %{py3_sitedir}/shiboken6/Shiboken.abi3.so
+%attr(755,root,root) %{py3_sitedir}/shiboken6/libshiboken6.abi3.so.6.8
+%{py3_sitedir}/shiboken6-%{version}-py*.egg-info
+
+%files -n shiboken6-generator
+%defattr(644,root,root,755)
+%doc LICENSES README.shiboken6-generator.md
+%dir %{py3_sitedir}/shiboken6_generator
+%{py3_sitedir}/shiboken6_generator/__pycache__
+%{py3_sitedir}/shiboken6_generator/*.py
+%attr(755,root,root) %{py3_sitedir}/shiboken6_generator/shiboken6
+%dir %{py3_sitedir}/shiboken6_generator/scripts
+%{py3_sitedir}/shiboken6_generator/scripts/__pycache__
+%attr(755,root,root) %{py3_sitedir}/shiboken6_generator/scripts/shiboken_tool.py
+%{py3_sitedir}/shiboken6_generator-%{version}-py*.egg-info
+
+#devel?
+%{py3_sitedir}/shiboken6_generator/include
 
 %if %{with doc}
 %files apidocs
