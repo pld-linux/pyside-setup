@@ -56,25 +56,22 @@ BuildRequires:	Qt6Widgets-devel
 BuildRequires:	Qt6Xml-devel
 BuildRequires:	clang-devel
 BuildRequires:	cups-devel
+BuildRequires:	patchelf
+BuildRequires:	python3-devel >= 1:3.2
 BuildRequires:	qt6-assistant
 BuildRequires:	qt6-designer
 BuildRequires:	qt6-qtdeclarative
 BuildRequires:	qt6-qttools
 BuildRequires:	qt6-quick3d
 BuildRequires:	qt6-shadertools
-BuildRequires:	patchelf
-BuildRequires:	python3-devel >= 1:3.2
-# if using noarch subpackage:
-#BuildRequires:	rpm-build >= 4.6
-BuildRequires:	rpm-pythonprov
+BuildRequires:	rpm-build >= 4.6
 BuildRequires:	rpmbuild(macros) >= 1.714
-# when using /usr/bin/env or other in-place substitutions
-#BuildRequires:        sed >= 4.0
+BuildRequires:	rpm-pythonprov
+BuildRequires:	sed >= 4.0
 %if %{with doc}
 BuildRequires:	sphinx-pdg-3
 %endif
-# replace with other requires if defined in setup.py
-Requires:	python3-modules >= 1:3.2
+Requires:	python3-modules >= 1:3.9
 BuildRoot:	%{tmpdir}/%{name}-%{version}-root-%(id -u -n)
 
 # unneeded missing libpython linkage
