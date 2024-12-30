@@ -8,7 +8,7 @@
 Summary:	Qt For Python
 Name:		pyside-setup
 Version:	6.8.1.1
-Release:	1
+Release:	2
 License:	LGPL v2.1+ / GPL v2
 Group:		Libraries/Python
 Source0:	https://github.com/pyside/pyside-setup/archive/v%{version}/%{name}-%{version}.tar.gz
@@ -20,8 +20,8 @@ BuildRequires:	Qt6Bluetooth-devel
 BuildRequires:	Qt6Charts-devel
 BuildRequires:	Qt6Concurrent-devel
 BuildRequires:	Qt6Core-devel
-BuildRequires:	Qt6DataVisualization-devel
 BuildRequires:	Qt6DBus-devel
+BuildRequires:	Qt6DataVisualization-devel
 BuildRequires:	Qt6Designer-devel
 BuildRequires:	Qt6Graphs-devel
 BuildRequires:	Qt6Gui-devel
@@ -29,8 +29,8 @@ BuildRequires:	Qt6Help-devel
 BuildRequires:	Qt6HttpServer-devel
 BuildRequires:	Qt6Location-devel
 BuildRequires:	Qt6Multimedia-devel
-BuildRequires:	Qt6NetworkAuth-devel
 BuildRequires:	Qt6Network-devel
+BuildRequires:	Qt6NetworkAuth-devel
 BuildRequires:	Qt6Nfc-devel
 BuildRequires:	Qt6OpenGL-devel
 %ifarch %{x8664} aarch64
@@ -39,8 +39,8 @@ BuildRequires:	Qt6Pdf-devel
 BuildRequires:	Qt6Positioning-devel
 BuildRequires:	Qt6PrintSupport-devel
 BuildRequires:	Qt6Qml-devel
-BuildRequires:	Qt6Quick3D-devel
 BuildRequires:	Qt6Quick-devel
+BuildRequires:	Qt6Quick3D-devel
 BuildRequires:	Qt6RemoteObjects-devel
 BuildRequires:	Qt6Scxml-devel
 BuildRequires:	Qt6Sensors-devel
@@ -72,8 +72,8 @@ BuildRequires:	qt6-qttools
 BuildRequires:	qt6-quick3d
 BuildRequires:	qt6-shadertools
 BuildRequires:	rpm-build >= 4.6
-BuildRequires:	rpmbuild(macros) >= 1.714
 BuildRequires:	rpm-pythonprov
+BuildRequires:	rpmbuild(macros) >= 1.714
 BuildRequires:	sed >= 4.0
 %if %{with doc}
 BuildRequires:	sphinx-pdg-3
@@ -101,21 +101,21 @@ Group:		Libraries/Python
 
 %description -n python3-shiboken6
 The purpose of the shiboken6 Python module is to access information
-related to the binding generation that could be used to integrate
-C++ programs to Python, or even to get useful information to debug
-an application.
+related to the binding generation that could be used to integrate C++
+programs to Python, or even to get useful information to debug an
+application.
 
-Mostly the idea is to interact with Shiboken objects,
-where one can check if it is valid, or if the generated Python wrapper
-is invalid after the underlying C++ object has been destroyed.
+Mostly the idea is to interact with Shiboken objects, where one can
+check if it is valid, or if the generated Python wrapper is invalid
+after the underlying C++ object has been destroyed.
 
 %package -n shiboken6
 Summary:	CPython bindings generator for C++ libraries
 Group:		Development/Tools
 
 %description -n shiboken6
-Shiboken is the generator used by the Qt for Python project.
-It outputs C++ code for CPython extensions, which can be compiled and
+Shiboken is the generator used by the Qt for Python project. It
+outputs C++ code for CPython extensions, which can be compiled and
 transformed into a Python module.
 
 C++ projects based on Qt can be wrapped, but also projects which are
@@ -188,6 +188,10 @@ CXXFLAGS="${CXXFLAGS:-%rpmcppflags %rpmcxxflags}"; export CXXFLAGS; \
 %{__mv} $RPM_BUILD_ROOT%{py3_sitedir}/PySide6/libpyside6*.abi3.so.6.8 $RPM_BUILD_ROOT%{_libdir}/
 %{__mv} $RPM_BUILD_ROOT%{py3_sitedir}/shiboken6/libshiboken6.abi3.so.6.8 $RPM_BUILD_ROOT%{_libdir}/
 
+# ... but keep symlinks so linking to the library works
+ln -sr $RPM_BUILD_ROOT%{_libdir}/libpyside6*.abi3.so.6.8 $RPM_BUILD_ROOT%{py3_sitedir}/PySide6/
+ln -sr $RPM_BUILD_ROOT%{_libdir}/libshiboken6.abi3.so.6.8 $RPM_BUILD_ROOT%{py3_sitedir}/shiboken6/
+
 %py3_ocomp $RPM_BUILD_ROOT%{py3_sitedir}
 
 install -d $RPM_BUILD_ROOT%{_examplesdir}/python3-PySide6-%{version}
@@ -204,11 +208,13 @@ rm -rf $RPM_BUILD_ROOT
 %files -n python3-PySide6
 %defattr(644,root,root,755)
 %doc LICENSES README.md README.pyside6*.md
-%{_bindir}/pyside6-*
-%{_bindir}/shiboken6
-%{_bindir}/shiboken6-genpyi
+%attr(755,root,root) %{_bindir}/pyside6-*
+%attr(755,root,root) %{_bindir}/shiboken6
+%attr(755,root,root) %{_bindir}/shiboken6-genpyi
 %attr(755,root,root) %{_libdir}/libpyside6*.abi3.so.6.8
 %dir %{py3_sitedir}/PySide6
+# symlinks
+%{py3_sitedir}/PySide6/libpyside6*.abi3.so.6.8
 %dir %{py3_sitedir}/PySide6/Qt
 %dir %{py3_sitedir}/PySide6/Qt/%{_lib}
 %{py3_sitedir}/PySide6/Qt/%{_lib}/qt6
@@ -264,6 +270,8 @@ rm -rf $RPM_BUILD_ROOT
 %doc LICENSES README.shiboken6.md
 %attr(755,root,root) %{_libdir}/libshiboken6.abi3.so.6.8
 %dir %{py3_sitedir}/shiboken6
+# symlink
+%{py3_sitedir}/shiboken6/libshiboken6.abi3.so.6.8
 %{py3_sitedir}/shiboken6/__pycache__
 %{py3_sitedir}/shiboken6/*.py
 %{py3_sitedir}/shiboken6/*.pyi
