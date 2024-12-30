@@ -33,7 +33,9 @@ BuildRequires:	Qt6NetworkAuth-devel
 BuildRequires:	Qt6Network-devel
 BuildRequires:	Qt6Nfc-devel
 BuildRequires:	Qt6OpenGL-devel
+%ifarch %{x8664} aarch64
 BuildRequires:	Qt6Pdf-devel
+%endif
 BuildRequires:	Qt6Positioning-devel
 BuildRequires:	Qt6PrintSupport-devel
 BuildRequires:	Qt6Qml-devel
@@ -51,7 +53,9 @@ BuildRequires:	Qt6Test-devel
 BuildRequires:	Qt6TextToSpeech-devel
 BuildRequires:	Qt6UiTools-devel
 BuildRequires:	Qt6WebChannel-devel
+%ifarch %{x8664} aarch64
 BuildRequires:	Qt6WebEngine-devel
+%endif
 BuildRequires:	Qt6WebSockets-devel
 BuildRequires:	Qt6WebView-devel
 BuildRequires:	Qt6Widgets-devel
