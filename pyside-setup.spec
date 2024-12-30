@@ -209,7 +209,7 @@ rm -rf $RPM_BUILD_ROOT
 %attr(755,root,root) %{_libdir}/libpyside6*.abi3.so.6.8
 %dir %{py3_sitedir}/PySide6
 %dir %{py3_sitedir}/PySide6/Qt
-%{py3_sitedir}/PySide6/Qt/lib64
+%{py3_sitedir}/PySide6/Qt/%{_lib}
 %dir %{py3_sitedir}/PySide6/Qt/libexec
 %attr(755,root,root) %{py3_sitedir}/PySide6/Qt/libexec/*
 %{py3_sitedir}/PySide6/Qt/modules
