@@ -94,11 +94,11 @@ Group:		Libraries/Python
 PySide6 is the official Python module from the Qt for Python project
 which provides access to the complete Qt 6.0+ framework.
 
-%package -n shiboken6
+%package -n python3-shiboken6
 Summary:	Shiboken Python module
 Group:		Libraries/Python
 
-%description -n shiboken6
+%description -n python3-shiboken6
 The purpose of the shiboken6 Python module is to access information
 related to the binding generation that could be used to integrate
 C++ programs to Python, or even to get useful information to debug
@@ -108,11 +108,11 @@ Mostly the idea is to interact with Shiboken objects,
 where one can check if it is valid, or if the generated Python wrapper
 is invalid after the underlying C++ object has been destroyed.
 
-%package -n shiboken6-generator
+%package -n shiboken6
 Summary:	CPython bindings generator for C++ libraries
 Group:		Development/Tools
 
-%description -n shiboken6-generator
+%description -n shiboken6
 Shiboken is the generator used by the Qt for Python project.
 It outputs C++ code for CPython extensions, which can be compiled and
 transformed into a Python module.
@@ -198,7 +198,7 @@ find $RPM_BUILD_ROOT%{_examplesdir}/python3-PySide6-%{version} -name '*.py' \
 rm -rf $RPM_BUILD_ROOT
 
 %post -n python3-PySide6 -p /sbin/ldconfig
-%post -n shiboken6 -p /sbin/ldconfig
+%post -n python3-shiboken6 -p /sbin/ldconfig
 
 %files -n python3-PySide6
 %defattr(644,root,root,755)
@@ -257,7 +257,7 @@ rm -rf $RPM_BUILD_ROOT
 
 %{_examplesdir}/python3-PySide6-%{version}
 
-%files -n shiboken6
+%files -n python3-shiboken6
 %defattr(644,root,root,755)
 %doc LICENSES README.shiboken6.md
 %attr(755,root,root) %{_libdir}/libshiboken6.abi3.so.6.8
@@ -269,7 +269,7 @@ rm -rf $RPM_BUILD_ROOT
 %attr(755,root,root) %{py3_sitedir}/shiboken6/Shiboken.abi3.so
 %{py3_sitedir}/shiboken6-%{version}-py*.egg-info
 
-%files -n shiboken6-generator
+%files -n shiboken6
 %defattr(644,root,root,755)
 %doc LICENSES README.shiboken6-generator.md
 %dir %{py3_sitedir}/shiboken6_generator
