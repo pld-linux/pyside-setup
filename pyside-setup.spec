@@ -1,4 +1,6 @@
 #
+# TODO: Move some tools to pyside-tools? (see sources/pyside-tools)
+#
 # Conditional build:
 %bcond_with	doc	# API documentation, needs sphinx_design plugin
 %bcond_with	tests	# unit tests (many are plain broken)
@@ -7,12 +9,12 @@ Summary:	Qt For Python
 Name:		pyside-setup
 Version:	6.8.1.1
 Release:	0.2
-License:	- (enter GPL/GPL v2/GPL v3/LGPL/BSD/BSD-like/other license name here)
+License:	LGPL v2.1+ / GPL v2
 Group:		Libraries/Python
 Source0:	https://github.com/pyside/pyside-setup/archive/v%{version}/%{name}-%{version}.tar.gz
 # Source0-md5:	e8b7aa9ee72299b82f1e434da7094944
 Patch0:		disable-broken-example.patch
-URL:		https://github.com/pyside/pyside-setup
+URL:		https://wiki.qt.io/Qt_for_Python
 BuildRequires:	Qt63D-devel
 BuildRequires:	Qt6Bluetooth-devel
 BuildRequires:	Qt6Charts-devel
@@ -78,25 +80,41 @@ BuildRoot:	%{tmpdir}/%{name}-%{version}-root-%(id -u -n)
 %define		skip_post_check_so	libshiboken6.*.so.* libpyside6.*.so.* libpyside6qml.*.so.*
 
 %description
-Qt For Python
+Qt For Python.
 
 %package -n python3-PySide6
-Summary:	-
-Group:		-
+Summary:	Official Python module from the Qt for Python project
+Group:		Libraries/Python
 
 %description -n python3-PySide6
+PySide6 is the official Python module from the Qt for Python project
+which provides access to the complete Qt 6.0+ framework.
 
 %package -n shiboken6
-Summary:	-
-Group:		-
+Summary:	Shiboken Python module
+Group:		Libraries/Python
 
 %description -n shiboken6
+The purpose of the shiboken6 Python module is to access information
+related to the binding generation that could be used to integrate
+C++ programs to Python, or even to get useful information to debug
+an application.
+
+Mostly the idea is to interact with Shiboken objects,
+where one can check if it is valid, or if the generated Python wrapper
+is invalid after the underlying C++ object has been destroyed.
 
 %package -n shiboken6-generator
-Summary:	-
-Group:		-
+Summary:	CPython bindings generator for C++ libraries
+Group:		Development/Tools
 
 %description -n shiboken6-generator
+Shiboken is the generator used by the Qt for Python project.
+It outputs C++ code for CPython extensions, which can be compiled and
+transformed into a Python module.
+
+C++ projects based on Qt can be wrapped, but also projects which are
+not related to Qt.
 
 %package apidocs
 Summary:	API documentation for Python %{module} module
