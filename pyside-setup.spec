@@ -6,7 +6,7 @@
 Summary:	Qt For Python
 Name:		pyside-setup
 Version:	6.8.1.1
-Release:	0.1
+Release:	0.2
 License:	- (enter GPL/GPL v2/GPL v3/LGPL/BSD/BSD-like/other license name here)
 Group:		Libraries/Python
 Source0:	https://github.com/pyside/pyside-setup/archive/v%{version}/%{name}-%{version}.tar.gz
@@ -142,6 +142,7 @@ PYTEST_PLUGINS= \
 
 %install
 rm -rf $RPM_BUILD_ROOT
+install -d $RPM_BUILD_ROOT%{_libdir}
 
 LDFLAGS="${LDFLAGS:-%rpmldflags}"; export LDFLAGS; \
 CFLAGS="${CFLAGS:-%rpmcppflags %rpmcflags}"; export CFLAGS; \
@@ -160,6 +161,10 @@ CXXFLAGS="${CXXFLAGS:-%rpmcppflags %rpmcxxflags}"; export CXXFLAGS; \
 # Atrocious (dereferencing all symlinks) copy of ffmpeg libs.
 %{__rm} -r $RPM_BUILD_ROOT%{py3_sitedir}/PySide6/Qt/lib
 
+# Fix main libs location
+%{__mv} $RPM_BUILD_ROOT%{py3_sitedir}/PySide6/libpyside6*.abi3.so.6.8 $RPM_BUILD_ROOT%{_libdir}/
+%{__mv} $RPM_BUILD_ROOT%{py3_sitedir}/shiboken6/libshiboken6.abi3.so.6.8 $RPM_BUILD_ROOT%{_libdir}/
+
 %py3_ocomp $RPM_BUILD_ROOT%{py3_sitedir}
 
 install -d $RPM_BUILD_ROOT%{_examplesdir}/python3-PySide6-%{version}
@@ -170,12 +175,16 @@ find $RPM_BUILD_ROOT%{_examplesdir}/python3-PySide6-%{version} -name '*.py' \
 %clean
 rm -rf $RPM_BUILD_ROOT
 
+%post -n python3-PySide6 -p /sbin/ldconfig
+%post -n shiboken6 -p /sbin/ldconfig
+
 %files -n python3-PySide6
 %defattr(644,root,root,755)
 %doc LICENSES README.md README.pyside6*.md
 %{_bindir}/pyside6-*
 %{_bindir}/shiboken6
 %{_bindir}/shiboken6-genpyi
+%attr(755,root,root) %{_libdir}/libpyside6*.abi3.so.6.8
 %dir %{py3_sitedir}/PySide6
 %dir %{py3_sitedir}/PySide6/Qt
 %{py3_sitedir}/PySide6/Qt/lib64
@@ -202,7 +211,6 @@ rm -rf $RPM_BUILD_ROOT
 %{py3_sitedir}/PySide6/typesystems/*.xml
 %{py3_sitedir}/PySide6/*.pyi
 %attr(755,root,root) %{py3_sitedir}/PySide6/Qt*.abi3.so
-%attr(755,root,root) %{py3_sitedir}/PySide6/libpyside6*.abi3.so.6.8
 %{py3_sitedir}/PySide6/*.py
 %{py3_sitedir}/PySide6/py.typed
 %{py3_sitedir}/PySide6/__pycache__
@@ -230,13 +238,13 @@ rm -rf $RPM_BUILD_ROOT
 %files -n shiboken6
 %defattr(644,root,root,755)
 %doc LICENSES README.shiboken6.md
+%attr(755,root,root) %{_libdir}/libshiboken6.abi3.so.6.8
 %dir %{py3_sitedir}/shiboken6
 %{py3_sitedir}/shiboken6/__pycache__
 %{py3_sitedir}/shiboken6/*.py
 %{py3_sitedir}/shiboken6/*.pyi
 %{py3_sitedir}/shiboken6/py.typed
 %attr(755,root,root) %{py3_sitedir}/shiboken6/Shiboken.abi3.so
-%attr(755,root,root) %{py3_sitedir}/shiboken6/libshiboken6.abi3.so.6.8
 %{py3_sitedir}/shiboken6-%{version}-py*.egg-info
 
 %files -n shiboken6-generator
