@@ -66,6 +66,7 @@ BuildRequires:	patchelf
 BuildRequires:	python3-devel >= 1:3.2
 BuildRequires:	qt6-assistant
 BuildRequires:	qt6-designer
+BuildRequires:	qt6-linguist
 BuildRequires:	qt6-qtdeclarative
 BuildRequires:	qt6-qttools
 BuildRequires:	qt6-quick3d
@@ -181,7 +182,7 @@ CXXFLAGS="${CXXFLAGS:-%rpmcppflags %rpmcxxflags}"; export CXXFLAGS; \
 	--reuse-build
 
 # Atrocious (dereferencing all symlinks) copy of ffmpeg libs.
-%{__rm} -r $RPM_BUILD_ROOT%{py3_sitedir}/PySide6/Qt/lib
+%{__rm} $RPM_BUILD_ROOT%{py3_sitedir}/PySide6/Qt/lib/lib{avcodec,avformat,avutil,swresample,swscale}.so*
 
 # Fix main libs location
 %{__mv} $RPM_BUILD_ROOT%{py3_sitedir}/PySide6/libpyside6*.abi3.so.6.8 $RPM_BUILD_ROOT%{_libdir}/
