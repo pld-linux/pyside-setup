@@ -8,7 +8,7 @@
 Summary:	Qt For Python
 Name:		pyside-setup
 Version:	6.8.1.1
-Release:	2
+Release:	3
 License:	LGPL v2.1+ / GPL v2
 Group:		Libraries/Python
 Source0:	https://github.com/pyside/pyside-setup/archive/v%{version}/%{name}-%{version}.tar.gz
