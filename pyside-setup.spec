@@ -7,12 +7,12 @@
 
 Summary:	Qt For Python
 Name:		pyside-setup
-Version:	6.8.1.1
-Release:	4
+Version:	6.8.2.1
+Release:	1
 License:	LGPL v2.1+ / GPL v2
 Group:		Libraries/Python
 Source0:	https://github.com/pyside/pyside-setup/archive/v%{version}/%{name}-%{version}.tar.gz
-# Source0-md5:	e8b7aa9ee72299b82f1e434da7094944
+# Source0-md5:	6e956002732a08275fb5c7f4051296c4
 Patch0:		disable-broken-example.patch
 URL:		https://wiki.qt.io/Qt_for_Python
 BuildRequires:	Qt63D-devel
