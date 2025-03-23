@@ -226,7 +226,6 @@ rm -rf $RPM_BUILD_ROOT
 %dir %{py3_sitedir}/PySide6/scripts
 %{py3_sitedir}/PySide6/scripts/__pycache__
 %{py3_sitedir}/PySide6/scripts/*_lib
-%{py3_sitedir}/PySide6/scripts/project
 %{py3_sitedir}/PySide6/scripts/*.txt
 %{py3_sitedir}/PySide6/scripts/__init__.py
 %{py3_sitedir}/PySide6/scripts/android_deploy.py
