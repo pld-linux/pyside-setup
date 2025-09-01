@@ -7,12 +7,12 @@
 
 Summary:	Qt For Python
 Name:		pyside-setup
-Version:	6.8.2.1
-Release:	3
+Version:	6.9.2
+Release:	1
 License:	LGPL v2.1+ / GPL v2
 Group:		Libraries/Python
 Source0:	https://github.com/pyside/pyside-setup/archive/v%{version}/%{name}-%{version}.tar.gz
-# Source0-md5:	6e956002732a08275fb5c7f4051296c4
+# Source0-md5:	7d4ce1c81b744b13a9100a98e13b6ff4
 Patch0:		disable-broken-example.patch
 URL:		https://wiki.qt.io/Qt_for_Python
 BuildRequires:	Qt63D-devel
@@ -185,12 +185,12 @@ CXXFLAGS="${CXXFLAGS:-%rpmcppflags %rpmcxxflags}"; export CXXFLAGS; \
 %{__rm} $RPM_BUILD_ROOT%{py3_sitedir}/PySide6/Qt/lib/lib{avcodec,avformat,avutil,swresample,swscale}.so*
 
 # Fix main libs location
-%{__mv} $RPM_BUILD_ROOT%{py3_sitedir}/PySide6/libpyside6*.abi3.so.6.8 $RPM_BUILD_ROOT%{_libdir}/
-%{__mv} $RPM_BUILD_ROOT%{py3_sitedir}/shiboken6/libshiboken6.abi3.so.6.8 $RPM_BUILD_ROOT%{_libdir}/
+%{__mv} $RPM_BUILD_ROOT%{py3_sitedir}/PySide6/libpyside6*.abi3.so.6.9 $RPM_BUILD_ROOT%{_libdir}/
+%{__mv} $RPM_BUILD_ROOT%{py3_sitedir}/shiboken6/libshiboken6.abi3.so.6.9 $RPM_BUILD_ROOT%{_libdir}/
 
 # ... but keep symlinks so linking to the library works
-ln -sr $RPM_BUILD_ROOT%{_libdir}/libpyside6*.abi3.so.6.8 $RPM_BUILD_ROOT%{py3_sitedir}/PySide6/
-ln -sr $RPM_BUILD_ROOT%{_libdir}/libshiboken6.abi3.so.6.8 $RPM_BUILD_ROOT%{py3_sitedir}/shiboken6/
+ln -sr $RPM_BUILD_ROOT%{_libdir}/libpyside6*.abi3.so.6.9 $RPM_BUILD_ROOT%{py3_sitedir}/PySide6/
+ln -sr $RPM_BUILD_ROOT%{_libdir}/libshiboken6.abi3.so.6.9 $RPM_BUILD_ROOT%{py3_sitedir}/shiboken6/
 
 %py3_ocomp $RPM_BUILD_ROOT%{py3_sitedir}
 
@@ -211,10 +211,10 @@ rm -rf $RPM_BUILD_ROOT
 %attr(755,root,root) %{_bindir}/pyside6-*
 %attr(755,root,root) %{_bindir}/shiboken6
 %attr(755,root,root) %{_bindir}/shiboken6-genpyi
-%attr(755,root,root) %{_libdir}/libpyside6*.abi3.so.6.8
+%attr(755,root,root) %{_libdir}/libpyside6*.abi3.so.6.9
 %dir %{py3_sitedir}/PySide6
 # symlinks
-%{py3_sitedir}/PySide6/libpyside6*.abi3.so.6.8
+%{py3_sitedir}/PySide6/libpyside6*.abi3.so.6.9
 %dir %{py3_sitedir}/PySide6/Qt
 %dir %{py3_sitedir}/PySide6/Qt/%{_lib}
 %{py3_sitedir}/PySide6/Qt/%{_lib}/qt6
@@ -267,10 +267,10 @@ rm -rf $RPM_BUILD_ROOT
 %files -n python3-shiboken6
 %defattr(644,root,root,755)
 %doc LICENSES README.shiboken6.md
-%attr(755,root,root) %{_libdir}/libshiboken6.abi3.so.6.8
+%attr(755,root,root) %{_libdir}/libshiboken6.abi3.so.6.9
 %dir %{py3_sitedir}/shiboken6
 # symlink
-%{py3_sitedir}/shiboken6/libshiboken6.abi3.so.6.8
+%{py3_sitedir}/shiboken6/libshiboken6.abi3.so.6.9
 %{py3_sitedir}/shiboken6/__pycache__
 %{py3_sitedir}/shiboken6/*.py
 %{py3_sitedir}/shiboken6/*.pyi
