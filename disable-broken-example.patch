@@ -1,8 +1,0 @@
---- pyside-setup-6.8.1.1/sources/pyside6/CMakeLists.txt~	2024-12-19 11:02:42.000000000 +0100
-+++ pyside-setup-6.8.1.1/sources/pyside6/CMakeLists.txt	2024-12-29 11:59:02.599997521 +0100
-@@ -42,4 +42,4 @@
- 
- add_subdirectory(doc)
- 
--add_subdirectory(qtexampleicons)
-+#add_subdirectory(qtexampleicons)
