@@ -1,0 +1,3838 @@
+diff --git a/build_scripts/config.py b/build_scripts/config.py
+index 47dd28b7c..852c411fd 100644
+--- a/build_scripts/config.py
++++ b/build_scripts/config.py
+@@ -182,7 +182,8 @@ class Config(metaclass=Singleton):
+                 "Python bindings for the Qt cross-platform application and UI framework"
+             )
+             self.setup_kwargs['install_requires'] = [
+-                f"{self.shiboken_module_st_name}=={package_version}"
++                f"{self.shiboken_module_st_name}=={package_version}",
++                'tomli>=2.0.1; python_version < "3.11"',
+             ]
+             if qt_install_dir:
+                 _pyside_tools = available_pyside_tools(qt_tools_path=Path(qt_install_dir))
+diff --git a/build_scripts/utils.py b/build_scripts/utils.py
+index 3cb7ade0f..92e4ac1e7 100644
+--- a/build_scripts/utils.py
++++ b/build_scripts/utils.py
+@@ -1159,9 +1159,10 @@ def copy_cmake_config_dirs(install_dir, st_build_dir, st_package_name, cmake_pac
+                 shutil.rmtree(dst_path)
+             dst_path.mkdir(parents=True)
+ 
+-            # check for wheel target files
++            # check for wheel target and config spec files
+             wheel_path = wheel_cmake_dir / src_path.name
+             wheel_targets_exist = {}
++            wheel_config_files_exist = set()
+             if wheel_path.exists():
+                 for item in wheel_path.iterdir():
+                     if item.is_file() and re.search(r"Targets(-.*)?\.cmake$", item.name):
+@@ -1170,6 +1171,10 @@ def copy_cmake_config_dirs(install_dir, st_build_dir, st_package_name, cmake_pac
+                             wheel_targets_exist[base_name] = True
+                             # Copy wheel target file
+                             shutil.copy2(str(item), str(dst_path / item.name))
++                    elif item.is_file() and re.search(r"Config\..+\.cmake$", item.name):
++                        # Wheel-specific config spec file
++                        wheel_config_files_exist.add(item.name)
++                        shutil.copy2(str(item), str(dst_path / item.name))
+ 
+             # Copy remaining files
+             for item in src_path.iterdir():
+@@ -1180,6 +1185,8 @@ def copy_cmake_config_dirs(install_dir, st_build_dir, st_package_name, cmake_pac
+                         is_pyside_shiboken = base_name in ("PySide6", "Shiboken6", "Shiboken6Tools")
+                         if is_pyside_shiboken and base_name in wheel_targets_exist:
+                             skip_file = True
++                    elif item.name in wheel_config_files_exist:
++                        skip_file = True
+ 
+                     if not skip_file:
+                         shutil.copy2(str(item), str(dst_path / item.name))
+diff --git a/build_scripts/wheel_files.py b/build_scripts/wheel_files.py
+index 72a2641bf..db59a9f81 100644
+--- a/build_scripts/wheel_files.py
++++ b/build_scripts/wheel_files.py
+@@ -465,9 +465,13 @@ def module_QtQml() -> ModuleData:
+     _qtlib = [
+         "libQt6LabsAnimation",
+         "libQt6LabsFolderListModel",
++        "libQt6LabsPlatform",
+         "libQt6LabsQmlModels*",
+         "libQt6LabsSettings",
+         "libQt6LabsSharedImage",
++        "libQt6LabsStyleKit",
++        "libQt6LabsStyleKitImpl",
++        "libQt6LabsSynchronizer",
+         "libQt6LabsWavefrontMesh",
+         "libQt6QmlCore",
+         "libQt6QmlLocalStorage",
+@@ -489,9 +493,13 @@ def module_QtQml() -> ModuleData:
+     _metatypes = [
+         "qt6labsanimation_metatypes.json",
+         "qt6labsfolderlistmodel_metatypes.json",
++        "qt6labsplatform_metatypes.json",
+         "qt6labsqmlmodels_metatypes.json",
+         "qt6labssettings_metatypes.json",
+         "qt6labssharedimage_metatypes.json",
++        "qt6labsstylekit_metatypes.json",
++        "qt6labsstylekitimpl_metatypes.json",
++        "qt6labssynchronizer_metatypes.json",
+         "qt6labswavefrontmesh_metatypes.json",
+         "qt6packetprotocolprivate_metatypes.json",
+         "qt6qmlcompilerprivate_metatypes.json",
+@@ -509,13 +517,16 @@ def module_QtQml() -> ModuleData:
+     ]
+ 
+     _qml = [
++        "Qt/labs/StyleKit",
+         "Qt/labs/animation",
++        "Qt/labs/assetdownloader",
+         "Qt/labs/folderlistmodel",
+-        "Qt/labs/sharedimage",
+-        "Qt/labs/wavefrontmesh",
+-        "Qt/labs/qmlmodels",
+         "Qt/labs/platform",
++        "Qt/labs/qmlmodels",
+         "Qt/labs/settings",
++        "Qt/labs/sharedimage",
++        "Qt/labs/synchronizer",
++        "Qt/labs/wavefrontmesh"
+     ]
+ 
+     data.lib.append("libpyside6qml")
+@@ -573,6 +584,9 @@ def module_QtQuick() -> ModuleData:
+         "qt6quicktimeline_metatypes.json",
+         "qt6quickvectorimage_metatypes.json",
+         "qt6quickvectorimagegeneratorprivate_metatypes.json",
++        "qt6lottie_metatypes.json",
++        "qt6lottievectorimagegeneratorprivate_metatypes.json",
++        "qt6lottievectorimagehelpers_metatypes.json",
+     ]
+     _qtlib = [
+         "libQt6QuickEffects",
+@@ -588,7 +602,10 @@ def module_QtQuick() -> ModuleData:
+         "libQt6QuickTimelineBlendTrees",
+         "libQt6QuickVectorImage",
+         "libQt6QuickVectorImageGenerator",
+-        "libQt6QuickVectorImageHelpers"
++        "libQt6QuickVectorImageHelpers",
++        "libQt6Lottie",
++        "libQt6LottieVectorImageGenerator",
++        "libQt6LottieVectorImageHelpers",
+     ]
+ 
+     data.qtlib.extend(_qtlib)
+diff --git a/coin/dependencies.yaml b/coin/dependencies.yaml
+index a5d9feb99..85260b111 100644
+--- a/coin/dependencies.yaml
++++ b/coin/dependencies.yaml
+@@ -1,6 +1,6 @@
+ product_dependency:
+   ../../qt/qt5:
+-    ref: "b3a9d45d2d5474a39c76fddc50bf6d55bcb7858d"
++    ref: "6.11"
+ dependency_source: supermodule
+ dependencies: [
+       "../../qt/qt3d",
+@@ -16,6 +16,7 @@ dependencies: [
+       "../../qt/qtgraphs",
+       "../../qt/qthttpserver",
+       "../../qt/qtimageformats",
++      "../../qt/qtlottie",
+       "../../qt/qtlocation",
+       "../../qt/qtpositioning",
+       "../../qt/qtmultimedia",
+diff --git a/create_wheels.py b/create_wheels.py
+index d9d900fb4..c4f8a365b 100644
+--- a/create_wheels.py
++++ b/create_wheels.py
+@@ -176,7 +176,12 @@ def generate_pyproject_toml(artifacts: Path, setup: SetupData) -> str:
+ 
+     # Installing dependencies
+     _dependencies = []
+-    if _name in ("PySide6", "PySide6_Examples"):
++    if _name == "PySide6":
++        _dependencies.append(f"shiboken6=={setup.version[0]}")
++        _dependencies.append(f"PySide6_Essentials=={setup.version[0]}")
++        _dependencies.append(f"PySide6_Addons=={setup.version[0]}")
++        _dependencies.append('tomli>=2.0.1; python_version < "3.11"')
++    elif _name == "PySide6_Examples":
+         _dependencies.append(f"shiboken6=={setup.version[0]}")
+         _dependencies.append(f"PySide6_Essentials=={setup.version[0]}")
+         _dependencies.append(f"PySide6_Addons=={setup.version[0]}")
+diff --git a/requirements-doc.txt b/requirements-doc.txt
+index a7d4d5443..1f3d3ac6d 100644
+--- a/requirements-doc.txt
++++ b/requirements-doc.txt
+@@ -6,9 +6,5 @@ sphinx-tags==0.4
+ sphinx-toolbox==3.7.0
+ sphinx-reredirects==0.1.5
+ myst-parser==3.0.1
+-# FIXME: Using fork in order to enable the 'collapse_navbar=True'
+-# option for the sphinx-theme. Upstream proposal:
+-# https://github.com/pradyunsg/furo/pull/748#issuecomment-1895448722
+-# furo==2023.9.10
+-furo @ git+https://github.com/cmaureir/furo@add_collapse
++furo==2025.12.19
+ graphviz==0.20.3
+diff --git a/sources/pyside-tools/deploy_lib/config.py b/sources/pyside-tools/deploy_lib/config.py
+index 853f5f6a2..f3f72ecd1 100644
+--- a/sources/pyside-tools/deploy_lib/config.py
++++ b/sources/pyside-tools/deploy_lib/config.py
+@@ -154,7 +154,7 @@ class Config(BaseConfig):
+ 
+         self._qml_files = []
+         # Design Studio projects include the qml files using Qt resources
+-        if source_file and not DesignStudioProject.is_ds_project(source_file):
++        if self.source_file and not DesignStudioProject.is_ds_project(self.source_file):
+             config_qml_files = self.get_value("qt", "qml_files")
+             if config_qml_files and self.project_dir and self.existing_config_file:
+                 self._qml_files = [Path(self.project_dir)
+diff --git a/sources/pyside-tools/deploy_lib/default.spec b/sources/pyside-tools/deploy_lib/default.spec
+index 5e33d5399..b44a4c35e 100644
+--- a/sources/pyside-tools/deploy_lib/default.spec
++++ b/sources/pyside-tools/deploy_lib/default.spec
+@@ -24,7 +24,7 @@ icon =
+ python_path =
+ 
+ # Python packages to install
+-packages = Nuitka==2.7.11
++packages = Nuitka==4.0
+ 
+ # Buildozer: for deploying Android application
+ android_packages = buildozer==1.5.0,cython==0.29.33
+diff --git a/sources/pyside-tools/project_lib/pyproject_toml.py b/sources/pyside-tools/project_lib/pyproject_toml.py
+index bc5a0f69d..c316cad7d 100644
+--- a/sources/pyside-tools/project_lib/pyproject_toml.py
++++ b/sources/pyside-tools/project_lib/pyproject_toml.py
+@@ -4,51 +4,18 @@ from __future__ import annotations
+ 
+ import os
+ import sys
+-# TODO: Remove this import when Python 3.11 is the minimum supported version
+-if sys.version_info >= (3, 11):
+-    import tomllib
+ from pathlib import Path
+ 
++try:
++    import tomllib
++except ModuleNotFoundError:
++    import tomli as tomllib  # type: ignore[no-redef]
++
+ from . import PYPROJECT_JSON_PATTERN
+ from .pyproject_parse_result import PyProjectParseResult
+ from .pyproject_json import parse_pyproject_json
+ 
+ 
+-def _parse_toml_content(content: str) -> dict:
+-    """
+-    Parse TOML content for project name and files list only.
+-    """
+-    result = {"project": {}, "tool": {"pyside6-project": {}}}
+-    current_section = None
+-
+-    for line in content.splitlines():
+-        line = line.strip()
+-        if not line or line.startswith('#'):
+-            continue
+-
+-        if line == '[project]':
+-            current_section = 'project'
+-        elif line == '[tool.pyside6-project]':
+-            current_section = 'tool.pyside6-project'
+-        elif '=' in line and current_section:
+-            key, value = [part.strip() for part in line.split('=', 1)]
+-
+-            # Handle string values - name of the project
+-            if value.startswith('"') and value.endswith('"'):
+-                value = value[1:-1]
+-            # Handle array of strings - files names
+-            elif value.startswith('[') and value.endswith(']'):
+-                items = value[1:-1].split(',')
+-                value = [item.strip().strip('"') for item in items if item.strip()]
+-
+-            if current_section == 'project':
+-                result['project'][key] = value
+-            else:  # tool.pyside6-project
+-                result['tool']['pyside6-project'][key] = value
+-
+-    return result
+-
+-
+ def _write_base_toml_content(data: dict) -> str:
+     """
+     Write minimal TOML content with project and tool.pyside6-project sections.
+@@ -81,12 +48,7 @@ def parse_pyproject_toml(pyproject_toml_file: Path) -> PyProjectParseResult:
+ 
+     try:
+         content = pyproject_toml_file.read_text(encoding='utf-8')
+-        # TODO: Remove the manual parsing when Python 3.11 is the minimum supported version
+-        if sys.version_info >= (3, 11):
+-            root_table = tomllib.loads(content)  # Use tomllib for Python >= 3.11
+-            print("Using tomllib for parsing TOML content")
+-        else:
+-            root_table = _parse_toml_content(content)  # Fallback to manual parsing
++        root_table = tomllib.loads(content)
+     except Exception as e:
+         result.errors.append(str(e))
+         return result
+diff --git a/sources/pyside6/PySide6/QtCore/typesystem_core_common.xml b/sources/pyside6/PySide6/QtCore/typesystem_core_common.xml
+index 06a1d07ce..11dd02c3e 100644
+--- a/sources/pyside6/PySide6/QtCore/typesystem_core_common.xml
++++ b/sources/pyside6/PySide6/QtCore/typesystem_core_common.xml
+@@ -896,6 +896,9 @@
+     <add-function signature="toPython()" return-type="PyObject">
+         <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qdate-topython"/>
+     </add-function>
++    <modify-function signature="QDate(QDate)">
++        <modify-argument index="1" pyi-type="Union[PySide6.QtCore.QDate, datetime.datetime, datetime.date]"/>
++    </modify-function>
+     <modify-function signature="getDate(int*,int*,int*)const" >
+         <modify-argument index="1">
+             <remove-argument/>
+@@ -969,6 +972,9 @@
+     <add-function signature="toPython()" return-type="PyObject">
+         <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qdatetime-topython"/>
+     </add-function>
++    <modify-function signature="QDateTime(QDateTime)">
++        <modify-argument index="1" pyi-type="Union[PySide6.QtCore.QDateTime, datetime.datetime]"/>
++    </modify-function>
+   </value-type>
+ 
+   <value-type name="QDir">
+diff --git a/sources/pyside6/PySide6/QtDesigner/qpydesignercustomwidgetcollection.cpp b/sources/pyside6/PySide6/QtDesigner/qpydesignercustomwidgetcollection.cpp
+index 2a24deca5..2bc627fb4 100644
+--- a/sources/pyside6/PySide6/QtDesigner/qpydesignercustomwidgetcollection.cpp
++++ b/sources/pyside6/PySide6/QtDesigner/qpydesignercustomwidgetcollection.cpp
+@@ -7,6 +7,7 @@
+ #include <QtCore/QVariant>
+ 
+ #include <sbkpep.h>
++#include <pep384ext.h>
+ #include <autodecref.h>
+ #include <basewrapper.h>
+ #include <bindingmanager.h>
+@@ -50,9 +51,12 @@ class PyDesignerCustomWidget : public QDesignerCustomWidgetInterface
+ {
+ public:
+     explicit PyDesignerCustomWidget(PyObject *pyTypeObject) :
+-        m_pyTypeObject(pyTypeObject) {}
++        m_name(QString::fromUtf8(PepExt_TypeGetQualName(reinterpret_cast<PyTypeObject *>(pyTypeObject)))),
++        m_pyTypeObject(pyTypeObject)
++    {
++    }
+ 
+-    QString name() const override;
++    QString name() const override { return m_name; }
+     QString group() const override { return m_group; }
+     QString toolTip() const override { return m_toolTip; }
+     QString whatsThis() const  override { return toolTip(); }
+@@ -75,9 +79,8 @@ public:
+     void setContainer(bool container) { m_container = container; }
+ 
+ private:
+-    const char *utf8Name() const;
+-
+     QDesignerFormEditorInterface *m_core = nullptr;
++    QString m_name;
+     QString m_group;
+     QString m_toolTip;
+     QString m_includeFile;
+@@ -87,16 +90,6 @@ private:
+     bool m_container = false;
+ };
+ 
+-const char *PyDesignerCustomWidget::utf8Name() const
+-{
+-    return reinterpret_cast<PyTypeObject *>(m_pyTypeObject)->tp_name;
+-}
+-
+-QString PyDesignerCustomWidget::name() const
+-{
+-    return QString::fromUtf8(utf8Name());
+-}
+-
+ QWidget *PyDesignerCustomWidget::createWidget(QWidget *parent)
+ {
+     // This is a copy of the similar function used for QUiLoader
+@@ -124,7 +117,7 @@ QWidget *PyDesignerCustomWidget::createWidget(QWidget *parent)
+     // Call python constructor
+     auto *obResult = PyObject_CallObject(m_pyTypeObject, pyArgs);
+     if (obResult == nullptr) {
+-        qWarning("Unable to create a Python custom widget of type \"%s\".", utf8Name());
++        qWarning("Unable to create a Python custom widget of type \"%s\".", qPrintable(m_name));
+         PyErr_Print();
+         return nullptr;
+     }
+diff --git a/sources/pyside6/PySide6/QtQml/typesystem_qml.xml b/sources/pyside6/PySide6/QtQml/typesystem_qml.xml
+index caa52b30d..1cc542291 100644
+--- a/sources/pyside6/PySide6/QtQml/typesystem_qml.xml
++++ b/sources/pyside6/PySide6/QtQml/typesystem_qml.xml
+@@ -196,8 +196,7 @@
+         <!-- createWithInitialProperties_withownership: like createWithInitialProperties() but
+              the returned QObject is Python owned -->
+         <add-function signature="createWithInitialProperties_withownership(QVariantMap@initialProperties@)"
+-                      return-type="QObject*"
+-                      allow-thread="yes">
++                      return-type="QObject*">
+             <modify-argument index="return">
+                 <define-ownership class="target" owner="target"/>
+             </modify-argument>
+@@ -209,8 +208,7 @@
+         </add-function>
+         <!-- create_withownership: like create() but the returned QObject is Python owned -->
+         <add-function signature="create_withownership(QQmlContext*@context@=nullptr)"
+-                      return-type="QObject*"
+-                      allow-thread="yes">
++                      return-type="QObject*">
+             <modify-argument index="return">
+                 <define-ownership class="target" owner="target"/>
+             </modify-argument>
+diff --git a/sources/pyside6/PySide6/glue/qtcore.cpp b/sources/pyside6/PySide6/glue/qtcore.cpp
+index 39fbdb79b..3c87d6009 100644
+--- a/sources/pyside6/PySide6/glue/qtcore.cpp
++++ b/sources/pyside6/PySide6/glue/qtcore.cpp
+@@ -777,7 +777,11 @@ static int SbkQByteArray_getbufferproc(PyObject *obj, Py_buffer *view, int flags
+ 
+     QByteArray * cppSelf = %CONVERTTOCPP[QByteArray *](obj);
+     //XXX      /|\ omitting this space crashes shiboken!
+-#ifdef Py_LIMITED_API
++
++#if !defined(Py_LIMITED_API) || Py_LIMITED_API >= 0x030B0000
++    return PyBuffer_FillInfo(view, obj, reinterpret_cast<void *>(cppSelf->data()),
++                             cppSelf->size(), 0, flags);
++#else
+     view->obj = obj;
+     view->buf = reinterpret_cast<void *>(cppSelf->data());
+     view->len = cppSelf->size();
+@@ -792,21 +796,15 @@ static int SbkQByteArray_getbufferproc(PyObject *obj, Py_buffer *view, int flags
+ 
+     Py_XINCREF(obj);
+     return 0;
+-#else // Py_LIMITED_API
+-    const int result = PyBuffer_FillInfo(view, obj, reinterpret_cast<void *>(cppSelf->data()),
+-                                         cppSelf->size(), 0, flags);
+-    if (result == 0)
+-        Py_XINCREF(obj);
+-    return result;
+ #endif
+ }
+ 
+ static PyBufferProcs SbkQByteArrayBufferProc = {
+-    /*bf_getbuffer*/  (getbufferproc)SbkQByteArray_getbufferproc,
+-    /*bf_releasebuffer*/ (releasebufferproc)0,
++    /*bf_getbuffer*/  SbkQByteArray_getbufferproc,
++    /*bf_releasebuffer*/ nullptr,
+ };
+ 
+-}
++} // extern "C"
+ // @snippet qbytearray-bufferprotocol
+ 
+ // @snippet qbytearray-operatorplus-1
+diff --git a/sources/pyside6/PySide6/glue/qtqml.cpp b/sources/pyside6/PySide6/glue/qtqml.cpp
+index 41c5253ce..42054902e 100644
+--- a/sources/pyside6/PySide6/glue/qtqml.cpp
++++ b/sources/pyside6/PySide6/glue/qtqml.cpp
+@@ -78,7 +78,9 @@ if (instance.isNull()) {
+ 
+ // @snippet qqmlcomponent-createwithinitialpropertieswithownership
+ // Like createWithInitialProperties() but with Python ownership on the returned object.
++PyThreadState *_save = PyEval_SaveThread(); // Py_BEGIN_ALLOW_THREADS
+ QObject *%0 = %CPPSELF.createWithInitialProperties(%1);
++PyEval_RestoreThread(_save); // Py_END_ALLOW_THREADS
+ %PYARG_0 = %CONVERTTOPYTHON[QObject*](%0);
+ // @snippet qqmlcomponent-createwithinitialpropertieswithownership
+ 
+@@ -86,7 +88,9 @@ QObject *%0 = %CPPSELF.createWithInitialProperties(%1);
+ // Create a QML component instance and transfer ownership to Python,
+ // so no manual keep-alive bookkeeping is needed.
+ // This is specifically created and useful for QtBridges
++PyThreadState *_save = PyEval_SaveThread(); // Py_BEGIN_ALLOW_THREADS
+ QObject *%0 = %CPPSELF.create(%1);
++PyEval_RestoreThread(_save); // Py_END_ALLOW_THREADS
+ %PYARG_0 = %CONVERTTOPYTHON[QObject*](%0);
+ // @snippet qqmlcomponent-createwithownership
+ 
+diff --git a/sources/pyside6/doc/building_from_source/index.rst b/sources/pyside6/doc/building_from_source/index.rst
+index 020dc5f32..bd2d38612 100644
+--- a/sources/pyside6/doc/building_from_source/index.rst
++++ b/sources/pyside6/doc/building_from_source/index.rst
+@@ -31,7 +31,7 @@ website.
+ * **Qt:** 6.11+ `[online installer] <https://download.qt.io/official_releases/online_installers/>`_
+ * **CMake:** 3.22+ `[official CMake website] <https://cmake.org/download/>`_
+ * **Git:** 2.0+. `[official Git website] <https://git-scm.com/downloads>`_
+-* **libclang:** The libclang library, recommended: version 18+ for 6.10+.
++* **libclang:** The libclang library (supported versions: 16-22, recommended version: 18+ for 6.11+).
+   Prebuilt versions for each OS can be `downloaded here`_.
+ * Check the `Supported Platforms of Qt`_
+ 
+diff --git a/sources/pyside6/doc/deployment/deployment-pyside6-deploy.rst b/sources/pyside6/doc/deployment/deployment-pyside6-deploy.rst
+index d71018bf9..7382e42f8 100644
+--- a/sources/pyside6/doc/deployment/deployment-pyside6-deploy.rst
++++ b/sources/pyside6/doc/deployment/deployment-pyside6-deploy.rst
+@@ -10,7 +10,7 @@ compiles your Python code to C code, and links with libpython to produce the fin
+ The final executable produced has a ``.exe`` suffix on Windows, ``.bin`` on Linux and ``.app`` on
+ macOS.
+ 
+-.. note:: The default version of Nuitka used with the tool is version ``2.7.11``. This can be
++.. note:: The default version of Nuitka used with the tool is version ``4.0``. This can be
+     updated to a newer version by updating your ``pysidedeploy.spec`` file.
+ 
+ .. _how_pysidedeploy:
+diff --git a/sources/pyside6/libpyside/CMakeLists.txt b/sources/pyside6/libpyside/CMakeLists.txt
+index 4f95ce0a8..c7aa5d9b0 100644
+--- a/sources/pyside6/libpyside/CMakeLists.txt
++++ b/sources/pyside6/libpyside/CMakeLists.txt
+@@ -5,7 +5,7 @@ project(libpyside)
+ 
+ find_package(Qt6 COMPONENTS Core CorePrivate)
+ 
+-set(libpyside_libraries Qt::Core Qt::CorePrivate)
++set(libpyside_libraries Qt::Core Qt::CorePrivate Qt::PlatformCommonInternal)
+ 
+ set(CMAKE_AUTOMOC ON)
+ 
+@@ -34,7 +34,7 @@ set(libpyside_HEADERS # installed below
+     pysideqapp.h
+     pysideqenum.h
+     pysideqhash.h
+-    pysideqobject.h
++    pysideqobject.h pysideqobject_p.h
+     pysideqslotobject_p.h
+     pysidesignal.h
+     pysidesignal_p.h
+@@ -160,15 +160,27 @@ configure_package_config_file(
+     INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}"
+ )
+ 
+-# Install-tree / wheel configuration
++# Install-tree configuration (for downstream CMake projects using a regular cmake install)
++set(PYSIDE_PYTHONPATH "${PYTHON_SITE_PACKAGES}/PySide6")
++set(PYSIDE_TYPESYSTEMS "${CMAKE_INSTALL_PREFIX}/share/PySide6${pyside6_SUFFIX}/typesystems")
++set(PYSIDE_GLUE "${CMAKE_INSTALL_PREFIX}/share/PySide6${pyside6_SUFFIX}/glue")
++set(PYSIDE_SOVERSION "${pyside6_library_so_version}")
++
++configure_package_config_file(
++    "${CMAKE_CURRENT_SOURCE_DIR}/PySide6Config-spec.cmake.in"
++    "${CMAKE_CURRENT_BINARY_DIR}/install/PySide6Config${SHIBOKEN_PYTHON_CONFIG_SUFFIX}.cmake"
++    INSTALL_DESTINATION "${LIB_INSTALL_DIR}/cmake/PySide6"
++    PATH_VARS PYSIDE_PYTHONPATH PYSIDE_TYPESYSTEMS PYSIDE_GLUE
++)
++
++# Wheel configuration (typesystems/glue sit directly inside the PySide6 Python package)
+ set(PYSIDE_PYTHONPATH "")
+ set(PYSIDE_TYPESYSTEMS "typesystems")
+ set(PYSIDE_GLUE "glue")
+-set(PYSIDE_SOVERSION "${pyside6_library_so_version}")
+ 
+ configure_package_config_file(
+     "${CMAKE_CURRENT_SOURCE_DIR}/PySide6Config-spec.cmake.in"
+-    "${CMAKE_CURRENT_BINARY_DIR}/install/PySide6Config${SHIBOKEN_PYTHON_CONFIG_SUFFIX}.cmake"
++    "${CMAKE_CURRENT_BINARY_DIR}/wheel/PySide6Config${SHIBOKEN_PYTHON_CONFIG_SUFFIX}.cmake"
+     INSTALL_DESTINATION "${LIB_INSTALL_DIR}/cmake/PySide6"
+     PATH_VARS PYSIDE_PYTHONPATH PYSIDE_TYPESYSTEMS PYSIDE_GLUE
+ )
+@@ -207,5 +219,8 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/PySide6Config.cmake"
+ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/install/PySide6Config${SHIBOKEN_PYTHON_CONFIG_SUFFIX}.cmake"
+         DESTINATION "${LIB_INSTALL_DIR}/cmake/PySide6")
+ 
++install(FILES "${CMAKE_CURRENT_BINARY_DIR}/wheel/PySide6Config${SHIBOKEN_PYTHON_CONFIG_SUFFIX}.cmake"
++        DESTINATION "${LIB_INSTALL_DIR}/wheels/cmake/PySide6")
++
+ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/PySide6ConfigVersion.cmake"
+         DESTINATION "${LIB_INSTALL_DIR}/cmake/PySide6")
+diff --git a/sources/pyside6/libpyside/dynamicqmetaobject.cpp b/sources/pyside6/libpyside/dynamicqmetaobject.cpp
+index 70c73bc57..c538ac1cc 100644
+--- a/sources/pyside6/libpyside/dynamicqmetaobject.cpp
++++ b/sources/pyside6/libpyside/dynamicqmetaobject.cpp
+@@ -15,6 +15,7 @@
+ #include <basewrapper.h>
+ #include <gilstate.h>
+ #include <sbkpep.h>
++#include <pep384ext.h>
+ #include <sbkstaticstrings.h>
+ #include <sbkstring.h>
+ 
+@@ -115,7 +116,7 @@ MetaObjectBuilder::MetaObjectBuilder(PyTypeObject *type, const QMetaObject *meta
+ {
+     m_d->m_baseObject = metaObject;
+     m_d->m_builder = new QMetaObjectBuilder();
+-    m_d->m_builder->setClassName(PepType_GetNameStr(type));
++    m_d->m_builder->setClassName(PepExt_TypeGetQualName(type));
+     m_d->m_builder->setSuperClass(metaObject);
+     m_d->parsePythonType(type);
+ }
+@@ -196,7 +197,7 @@ static bool checkMethodSignature(const QByteArray &signature)
+     const bool ok = openParen != -1 && closingParen != -1 && openParen < closingParen;
+     if (!ok) {
+          const QByteArray message =
+-             "MetaObjectBuilder::addMethod: Invalid method signature provided for \""
++             "libpyside: MetaObjectBuilder::addMethod: Invalid method signature provided for \""
+                  + signature + '"';
+          PyErr_WarnEx(PyExc_RuntimeWarning, message.constData(), 0);
+     }
+@@ -287,7 +288,7 @@ static QByteArray msgInvalidPropertyType(const QByteArray &className,
+                                          const QByteArray &propertyName,
+                                          const QByteArray &propertyType)
+ {
+-    return "QMetaObjectBuilder: Failed to add property \""_ba + propertyName
++    return "libpyside: QMetaObjectBuilder: Failed to add property \""_ba + propertyName
+            + "\" to \""_ba + className + "\": Invalid property type \""
+            + propertyType + "\"."_ba;
+ }
+@@ -438,7 +439,7 @@ static QString msgMethodSortOrder(const QMetaObject *mo, int offendingIndex)
+ {
+     QString result;
+     QTextStream str(&result);
+-    str << "\n\n*** Sort Warning ***\nSignals and slots in QMetaObject '"
++    str << "\n\nlibpyside: *** Sort Warning ***\nSignals and slots in QMetaObject '"
+         << mo->className()
+         << "' are not ordered correctly, this may lead to issues.\n";
+     const int methodOffset = mo->methodOffset();
+diff --git a/sources/pyside6/libpyside/dynamicslot.cpp b/sources/pyside6/libpyside/dynamicslot.cpp
+index 3d9b9c1be..7875d4327 100644
+--- a/sources/pyside6/libpyside/dynamicslot.cpp
++++ b/sources/pyside6/libpyside/dynamicslot.cpp
+@@ -346,7 +346,8 @@ static void disconnectReceiver(PyObject *pythonSelf)
+         for (auto it = connectionHash.begin(); it != connectionHash.end(); ) {
+             if (it.key().object == pythonSelf) {
+                 const auto oldSize = connectionHash.size();
+-                QObject::disconnect(it.value());
++                auto connId = it.value(); // QTBUG-144929, take copy
++                QObject::disconnect(connId);
+                 it = connectionHash.erase(it);
+                 // Check for a disconnection causing deletion of further objects
+                 // by a re-entrant call.
+@@ -394,7 +395,8 @@ bool disconnectSlot(QObject *source, int signalIndex, PyObject *callback)
+     auto it = connectionHash.find(connectionKey(source, signalIndex, callback));
+     const bool ok = it != connectionHash.end();
+     if (ok) {
+-        QObject::disconnect(it.value());
++        auto connId = it.value(); // QTBUG-144929, take copy
++        QObject::disconnect(connId);
+         connectionHash.erase(it);
+     }
+     return ok;
+diff --git a/sources/pyside6/libpyside/pyside.cpp b/sources/pyside6/libpyside/pyside.cpp
+index 13e815b52..9fb2630cb 100644
+--- a/sources/pyside6/libpyside/pyside.cpp
++++ b/sources/pyside6/libpyside/pyside.cpp
+@@ -7,6 +7,7 @@
+ #include "pysidemetatype.h"
+ #include "pysideqapp.h"
+ #include "pysideqobject.h"
++#include "pysideqobject_p.h"
+ #include "pysideutils.h"
+ #include "pyside_p.h"
+ #include "signalmanager.h"
+@@ -38,6 +39,7 @@
+ #include <sbkfeature_base.h>
+ #include <sbkmodule.h>
+ 
++#include <QtCore/qabstracteventdispatcher.h>
+ #include <QtCore/qbytearray.h>
+ #include <QtCore/qcoreapplication.h>
+ #include <QtCore/qdebug.h>
+@@ -523,8 +525,8 @@ void initQObjectSubType(PyTypeObject *type, PyObject *args, PyObject * /* kwds *
+     }
+     if (!userData) {
+         const char *className = Shiboken::String::toCString(PyTuple_GetItem(args, 0));
+-        qWarning("Sub class of QObject not inheriting QObject!? Crash will happen when using %s.",
+-                 className);
++        qWarning("libpyside: A subclass of QObject is not inheriting QObject."
++                 " A crash might happen when using %s.", className);
+         return;
+     }
+     // PYSIDE-1463: Don't change feature selection durin subtype initialization.
+@@ -1286,4 +1288,58 @@ PYSIDE_API QDebug operator<<(QDebug debug, const debugPyBuffer &b)
+ }
+ #endif // !Py_LIMITED_API || >= 3.11
+ 
++QDebug operator<<(QDebug debug, const PySide::debugQObject &qo)
++{
++    QDebugStateSaver saver(debug);
++    debug.noquote();
++    debug.nospace();
++
++    if (qo.m_qobject == nullptr) {
++        debug << "QObject(0)";
++    } else {
++        debug << qo.m_qobject->metaObject()->className() << '/';
++        if (const auto &on = qo.m_qobject->objectName(); !on.isEmpty())
++            debug << '"' << on << '"';
++        else
++            debug << static_cast<const void *>(qo.m_qobject);
++    }
++    return debug;
++}
++
+ } // namespace PySide
++
++void deferredDeleteQObject(void *cppSelf)
++{
++    if (cppSelf == nullptr)
++        return;
++    auto *qobject = reinterpret_cast<QObject *>(cppSelf);
++    auto *ownerThread = qobject->thread();
++    const auto *currentThread = QThread::currentThread();
++    // Directly delete when called from ownerThread
++    if (ownerThread == nullptr || ownerThread == currentThread
++        || QCoreApplication::closingDown()) {
++        delete qobject;
++        return;
++    }
++
++    qCWarning(lcPySide).noquote().nospace()
++        << "libpyside: Deferred deletion of " << PySide::debugQObject(qobject)
++        << "(owner thread: " << PySide::debugQObject(ownerThread)
++        << "), GC thread: " << PySide::debugQObject(currentThread);
++
++    // Owner thread has event loop: Schedule deleteLater()
++    if (QAbstractEventDispatcher::instance(ownerThread) != nullptr) {
++        qobject->deleteLater();
++        return;
++    }
++
++    // No event loop: Fall back to deletion in main thread
++    if (QThread::isMainThread()) {
++        delete qobject;
++        return;
++    }
++
++    auto &bm = Shiboken::BindingManager::instance();
++    bm.addToDeletionInMainThread({Shiboken::callCppDestructor<QObject>, cppSelf});
++    bm.runDeletionInMainThread();
++}
+diff --git a/sources/pyside6/libpyside/pysideqobject.h b/sources/pyside6/libpyside/pysideqobject.h
+index a6248ef6c..63cfd3114 100644
+--- a/sources/pyside6/libpyside/pysideqobject.h
++++ b/sources/pyside6/libpyside/pysideqobject.h
+@@ -76,4 +76,7 @@ PYSIDE_API PyTypeObject *getTypeForQObject(const QObject *cppSelf);
+ 
+ } //namespace PySide
+ 
++/// Deletion handler for "delete-in-owner-thread"
++extern "C" PYSIDE_API void deferredDeleteQObject(void *cppSelf);
++
+ #endif // PYSIDEQOBJECT_H
+diff --git a/sources/pyside6/libpyside/pysideqobject_p.h b/sources/pyside6/libpyside/pysideqobject_p.h
+new file mode 100644
+index 000000000..d92d35c73
+--- /dev/null
++++ b/sources/pyside6/libpyside/pysideqobject_p.h
+@@ -0,0 +1,28 @@
++// Copyright (C) 2026 The Qt Company Ltd.
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#ifndef PYSIDEQOBJECT_P_H
++#define PYSIDEQOBJECT_P_H
++
++#include <pysidemacros.h>
++
++#include <QtCore/qtclasshelpermacros.h>
++
++QT_FORWARD_DECLARE_CLASS(QDebug)
++QT_FORWARD_DECLARE_CLASS(QObject)
++
++namespace PySide
++{
++
++struct debugQObject
++{
++    debugQObject(const QObject *qobject) : m_qobject(qobject) {}
++
++    const QObject *m_qobject;
++};
++
++QDebug operator<<(QDebug debug, const debugQObject &qo);
++
++} //namespace PySide
++
++#endif // PYSIDEQOBJECT_P_H
+diff --git a/sources/pyside6/libpyside/pysidesignal.cpp b/sources/pyside6/libpyside/pysidesignal.cpp
+index 7a65c9a9f..7ebd88fdd 100644
+--- a/sources/pyside6/libpyside/pysidesignal.cpp
++++ b/sources/pyside6/libpyside/pysidesignal.cpp
+@@ -671,10 +671,12 @@ static inline void warnDisconnectFailed(PyObject *aSlot, const QByteArray &signa
+ {
+     if (PyErr_Occurred() != nullptr) { // avoid "%S" invoking str() when an error is set.
+         Shiboken::Errors::Stash errorStash;
+-        PyErr_WarnFormat(PyExc_RuntimeWarning, 0, "Failed to disconnect (%s) from signal \"%s\".",
++        PyErr_WarnFormat(PyExc_RuntimeWarning, 0,
++                         "libpyside: Failed to disconnect (%s) from signal \"%s\".",
+                          Py_TYPE(aSlot)->tp_name, signature.constData());
+     } else {
+-        PyErr_WarnFormat(PyExc_RuntimeWarning, 0, "Failed to disconnect (%S) from signal \"%s\".",
++        PyErr_WarnFormat(PyExc_RuntimeWarning, 0,
++                         "libpyside: Failed to disconnect (%S) from signal \"%s\".",
+                          aSlot, signature.constData());
+     }
+ }
+diff --git a/sources/pyside6/libpyside/pysidevariantutils.cpp b/sources/pyside6/libpyside/pysidevariantutils.cpp
+index c683c7dea..7ac17fb32 100644
+--- a/sources/pyside6/libpyside/pysidevariantutils.cpp
++++ b/sources/pyside6/libpyside/pysidevariantutils.cpp
+@@ -17,7 +17,7 @@ static const char qVariantTypeName[] = "QVariant";
+ 
+ static void warnConverter(const char *name)
+ {
+-    qWarning("Type converter for: %s not registered.", name);
++    qWarning("libpyside: Type converter for: %s not registered.", name);
+ }
+ 
+ // Helper converting each item of a non-empty list using the "QVariant" converter
+diff --git a/sources/pyside6/libpyside/signalmanager.cpp b/sources/pyside6/libpyside/signalmanager.cpp
+index fbd8e1666..d8954dd42 100644
+--- a/sources/pyside6/libpyside/signalmanager.cpp
++++ b/sources/pyside6/libpyside/signalmanager.cpp
+@@ -2,6 +2,7 @@
+ // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+ 
+ #include "signalmanager.h"
++#include "pysideqobject_p.h"
+ #include "pysidesignal.h"
+ #include "pysidelogging_p.h"
+ #include "pysideproperty.h"
+@@ -194,7 +195,7 @@ int PyObjectWrapper::toInt() const
+ QDataStream &operator<<(QDataStream &out, const PyObjectWrapper &myObj)
+ {
+     if (Py_IsInitialized() == 0) {
+-        qWarning() << "Stream operator for PyObject called without python interpreter.";
++        qWarning("libpyside: Stream operator for PyObject called without python interpreter.");
+         return out;
+     }
+ 
+@@ -226,7 +227,7 @@ QDataStream &operator<<(QDataStream &out, const PyObjectWrapper &myObj)
+ QDataStream &operator>>(QDataStream &in, PyObjectWrapper &myObj)
+ {
+     if (Py_IsInitialized() == 0) {
+-        qWarning() << "Stream operator for PyObject called without python interpreter.";
++        qWarning("libpyside: Stream operator for PyObject called without python interpreter.");
+         return in;
+     }
+ 
+@@ -400,7 +401,7 @@ int SignalManagerPrivate::qtPropertyMetacall(QObject *object,
+     Shiboken::AutoDecRef pp_name(Shiboken::String::fromCString(mp.name()));
+     PySideProperty *pp = Property::getObject(pySelf, pp_name);
+     if (!pp) {
+-        qWarning("Invalid property: %s.", mp.name());
++        qWarning("libpyside: Invalid property: %s.", mp.name());
+         return false;
+     }
+     pp->d->metaCall(pySelf, call, args);
+@@ -411,8 +412,8 @@ int SignalManagerPrivate::qtPropertyMetacall(QObject *object,
+             Shiboken::Errors::Stash errorStash;
+             bool ign = call == QMetaObject::WriteProperty;
+             PyErr_WarnFormat(PyExc_RuntimeWarning, 0,
+-                ign ? "Unknown property type '%s' of QObject '%s' used in fset"
+-                    : "Unknown property type '%s' of QObject '%s' used in fget with %R",
++                ign ? "libpyside: Unknown property type '%s' of QObject '%s' used in fset"
++                    : "libpyside: Unknown property type '%s' of QObject '%s' used in fget with %R",
+                 pp->d->typeName().constData(), metaObject->className(), errorStash.getException());
+             if (PyErr_Occurred())
+                 Shiboken::Errors::storeErrorOrPrint();
+@@ -421,8 +422,9 @@ int SignalManagerPrivate::qtPropertyMetacall(QObject *object,
+         }
+ 
+         qWarning().noquote().nospace()
+-            << "An error occurred executing the property metacall " << metaObjectCallName(call)
+-            << " on property \"" << mp.name() << "\" of " << object;
++            << "libpyside: An error occurred executing the property metacall "
++            << metaObjectCallName(call) << " on property \"" << mp.name()
++            << "\" of " << PySide::debugQObject(object);
+         handleMetaCallError(object, &result);
+     }
+     return result;
+@@ -719,9 +721,9 @@ static int addMetaMethod(QObject *source, const QByteArray &signature,
+     const QMetaObject *metaObject = source->metaObject();
+     SbkObject *self = Shiboken::BindingManager::instance().retrieveWrapper(source);
+     if (!Shiboken::Object::hasCppWrapper(self)) {
+-        qWarning().noquote().nospace() << __FUNCTION__
++        qWarning().noquote().nospace() << "libpyside: " << __FUNCTION__
+             << ": Cannot add dynamic method \"" << signature << "\" (" << type
+-            << ") to " << source << ": No Wrapper found.";
++            << ") to " << PySide::debugQObject(source) << ": No Wrapper found.";
+         return -1;
+     }
+ 
+@@ -738,9 +740,9 @@ static int addMetaMethod(QObject *source, const QByteArray &signature,
+ 
+     if (type == QMetaMethod::Slot) {
+         qCWarning(lcPySide).noquote().nospace()
+-            << "Warning: Registering dynamic slot \""
+-            << signature << "\" on \"" << source->metaObject()->className()
+-            << "\". Consider annotating with " << slotSignature(signature);
++            << "libpyside: Warning: Registering dynamic slot \""
++            << signature << "\" on " << PySide::debugQObject(source)
++            << ". Consider annotating with " << slotSignature(signature);
+     }
+ 
+     return type == QMetaMethod::Signal ? dmo->addSignal(signature) : dmo->addSlot(signature);
+@@ -748,7 +750,7 @@ static int addMetaMethod(QObject *source, const QByteArray &signature,
+ 
+ static inline void warnNullSource(const char *signature)
+ {
+-    qWarning("SignalManager::registerMetaMethodGetIndex(\"%s\") called with source=nullptr.",
++    qWarning("libpyside: SignalManager::registerMetaMethodGetIndex(\"%s\") called with source=nullptr.",
+              signature);
+ }
+ 
+diff --git a/sources/pyside6/libpysideremoteobjects/pysiderephandler.cpp b/sources/pyside6/libpysideremoteobjects/pysiderephandler.cpp
+index ffa8af82a..d7debf285 100644
+--- a/sources/pyside6/libpysideremoteobjects/pysiderephandler.cpp
++++ b/sources/pyside6/libpysideremoteobjects/pysiderephandler.cpp
+@@ -17,6 +17,7 @@
+ #include <QtCore/qbuffer.h>
+ #include <QtCore/qiodevice.h>
+ #include <QtCore/qmetaobject.h>
++#include <QtCore/qstringlist.h>
+ 
+ #include <QtRemoteObjects/qremoteobjectreplica.h>
+ #include <QtRemoteObjects/qremoteobjectpendingcall.h>
+@@ -47,6 +48,16 @@ using namespace Shiboken;
+  * .rep file.
+ */
+ 
++struct PySideRepFilePrivate
++{
++    AST ast;
++    PyObject *podDict{};
++    PyObject *replicaDict{};
++    PyObject *sourceDict{};
++    QStringList classes;
++    QStringList pods;
++};
++
+ static QVariantList generateProperties(QMetaObject *meta, const ASTClass &astClass);
+ 
+ extern "C"
+diff --git a/sources/pyside6/libpysideremoteobjects/pysiderephandler_p.h b/sources/pyside6/libpysideremoteobjects/pysiderephandler_p.h
+index 5956f0b49..eb9ed7509 100644
+--- a/sources/pyside6/libpysideremoteobjects/pysiderephandler_p.h
++++ b/sources/pyside6/libpysideremoteobjects/pysiderephandler_p.h
+@@ -6,19 +6,7 @@
+ 
+ #include <sbkpython.h>
+ 
+-#include <QtRemoteObjects/repparser.h>
+-
+-#include <QtCore/qstringlist.h>
+-
+-struct PySideRepFilePrivate
+-{
+-    AST ast;
+-    PyObject *podDict{};
+-    PyObject *replicaDict{};
+-    PyObject *sourceDict{};
+-    QStringList classes;
+-    QStringList pods;
+-};
++struct PySideRepFilePrivate;
+ 
+ extern "C"
+ {
+diff --git a/sources/pyside6/plugins/designer/CMakeLists.txt b/sources/pyside6/plugins/designer/CMakeLists.txt
+index 353d526a5..d231d8258 100644
+--- a/sources/pyside6/plugins/designer/CMakeLists.txt
++++ b/sources/pyside6/plugins/designer/CMakeLists.txt
+@@ -22,10 +22,7 @@ target_sources(PySidePlugin PRIVATE
+ 
+ target_compile_definitions(PySidePlugin PRIVATE -DQT_NO_KEYWORDS=1)
+ 
+-# For Windows we use the limited API by default
+-# See ShibokenHelpers.cmake::shiboken_check_if_limited_api() which is called always
+-# with default FORCE_LIMITED_API set to TRUE for building libshiboken
+-if(FORCE_LIMITED_API OR WIN32)
++if(FORCE_LIMITED_API)
+     target_compile_definitions(PySidePlugin PRIVATE "-DPy_LIMITED_API=0x030a0000")
+ endif()
+ 
+diff --git a/sources/shiboken6/.cmake.conf b/sources/shiboken6/.cmake.conf
+index 44dac5182..7154d243e 100644
+--- a/sources/shiboken6/.cmake.conf
++++ b/sources/shiboken6/.cmake.conf
+@@ -1,5 +1,5 @@
+ set(shiboken_MAJOR_VERSION "6")
+ set(shiboken_MINOR_VERSION "11")
+ set(shiboken_MICRO_VERSION "0")
+-set(shiboken_PRE_RELEASE_VERSION_TYPE "")
+-set(shiboken_PRE_RELEASE_VERSION "")
++set(shiboken_PRE_RELEASE_VERSION_TYPE "a")
++set(shiboken_PRE_RELEASE_VERSION "1")
+diff --git a/sources/shiboken6/doc/typesystem_specifying_types.rst b/sources/shiboken6/doc/typesystem_specifying_types.rst
+index 7c3c1ae63..29c264321 100644
+--- a/sources/shiboken6/doc/typesystem_specifying_types.rst
++++ b/sources/shiboken6/doc/typesystem_specifying_types.rst
+@@ -501,6 +501,8 @@ contain :ref:`add-function`, :ref:`add-pymethoddef`,
+          since="..."
+          copyable="yes | no"
+          allow-thread="..."
++         delete-in-main-thread="yes | no"
++         delete-in-owner-thread="yes | no"
+          disable-wrapper="yes | no"
+          exception-handling="..."
+          generate-functions="..."
+@@ -530,6 +532,17 @@ superclass for the given type in the generated target language API.
+ This can be useful if the C++ base class is not exposed. The specified
+ super class needs to be a direct base class of the class in question.
+ 
++The *optional* **delete-in-main-thread** attribute specifies that the
++destructor is called in the main thread (scheduled via
++``Py_AddPendingCall()``). This is intended to ensure that Qt's Widget classes
++are deleted in the main GUI thread even when a garbage collection running in a
++different thread cleans them up.
++
++The *optional* **delete-in-owner-thread** attribute (applicable to Qt's
++``QObject``-derived types only) specifies that destruction is deferred by
++calling ``deleteLater()`` in case a garbage collection running in a thread
++different from the owner thread of the instance cleans them up.
++
+ The *optional* **force-abstract** attribute forces the class to be
+ abstract, disabling its instantiation. The generator will normally detect
+ this automatically unless the class inherits from an abstract base class
+diff --git a/sources/shiboken6/libshiboken/CMakeLists.txt b/sources/shiboken6/libshiboken/CMakeLists.txt
+index 45a967c1c..d3fef1bed 100644
+--- a/sources/shiboken6/libshiboken/CMakeLists.txt
++++ b/sources/shiboken6/libshiboken/CMakeLists.txt
+@@ -65,6 +65,7 @@ bufferprocs_py37.cpp bufferprocs_py37.h
+ debugfreehook.cpp debugfreehook.h
+ gilstate.cpp gilstate.h
+ helper.cpp helper.h
++pep384ext.cpp pep384ext.h
+ pep384impl.cpp pep384impl.h
+ pyobjectholder.h
+ sbkarrayconverter.cpp sbkarrayconverter.h sbkarrayconverter_p.h
+@@ -72,6 +73,7 @@ sbkbindingutils.cpp sbkbindingutils.h
+ sbkcontainer.cpp sbkcontainer.h
+ sbkconverter.cpp sbkconverter.h sbkconverter_p.h
+ sbkcppstring.cpp sbkcppstring.h sbkcpptonumpy.h
++sbkdestructorentry.h
+ sbkenum.cpp sbkenum.h sbkenum_p.h
+ sbkerrors.cpp sbkerrors.h
+ sbkfeature_base.cpp sbkfeature_base.h
+@@ -170,6 +172,7 @@ install(FILES
+         sbkcontainer.h
+         sbkconverter.h
+         sbkcpptonumpy.h
++        sbkdestructorentry.h
+         sbkenum.h
+         sbkenum_p.h
+         sbkerrors.h
+diff --git a/sources/shiboken6/libshiboken/basewrapper.h b/sources/shiboken6/libshiboken/basewrapper.h
+index 16ef506b5..6179a7fcf 100644
+--- a/sources/shiboken6/libshiboken/basewrapper.h
++++ b/sources/shiboken6/libshiboken/basewrapper.h
+@@ -6,6 +6,7 @@
+ 
+ #include "sbkpython.h"
+ #include "shibokenmacros.h"
++#include "sbkdestructorentry.h"
+ 
+ #include <vector>
+ #include <string>
+@@ -60,8 +61,6 @@ using TypeDiscoveryFuncV2 = void *(*)(void *, PyTypeObject *);
+ // Used in userdata dealloc function
+ using DeleteUserDataFunc = void (*)(void *);
+ 
+-using ObjectDestructor = void (*)(void *);
+-
+ using SubTypeInitHook = void (*)(PyTypeObject *, PyObject *, PyObject *);
+ 
+ /// PYSIDE-1019: Set the function to select the current feature.
+diff --git a/sources/shiboken6/libshiboken/basewrapper_p.h b/sources/shiboken6/libshiboken/basewrapper_p.h
+index e8744ad2d..94a866f6b 100644
+--- a/sources/shiboken6/libshiboken/basewrapper_p.h
++++ b/sources/shiboken6/libshiboken/basewrapper_p.h
+@@ -127,17 +127,6 @@ struct SbkObjectTypePrivate
+ 
+ namespace Shiboken
+ {
+-
+-/**
+- * \internal
+- * Data required to invoke a C++ destructor
+- */
+-struct DestructorEntry
+-{
+-    ObjectDestructor destructor;
+-    void *cppInstance;
+-};
+-
+ /**
+  * Utility function used to transform a PyObject that implements sequence protocol into a std::list.
+  **/
+diff --git a/sources/shiboken6/libshiboken/bindingmanager.h b/sources/shiboken6/libshiboken/bindingmanager.h
+index ea90bb033..97aefb596 100644
+--- a/sources/shiboken6/libshiboken/bindingmanager.h
++++ b/sources/shiboken6/libshiboken/bindingmanager.h
+@@ -6,6 +6,7 @@
+ 
+ #include "sbkpython.h"
+ #include "shibokenmacros.h"
++#include "sbkdestructorentry.h"
+ 
+ #include <set>
+ #include <utility>
+@@ -19,8 +20,6 @@ namespace Module {
+ struct TypeInitStruct;
+ }
+ 
+-struct DestructorEntry;
+-
+ using ObjectVisitor = void (*)(SbkObject *, void *);
+ 
+ class LIBSHIBOKEN_API BindingManager
+diff --git a/sources/shiboken6/libshiboken/pep384ext.cpp b/sources/shiboken6/libshiboken/pep384ext.cpp
+new file mode 100644
+index 000000000..a3f7d2d7d
+--- /dev/null
++++ b/sources/shiboken6/libshiboken/pep384ext.cpp
+@@ -0,0 +1,13 @@
++// Copyright (C) 2026 The Qt Company Ltd.
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#include "pep384ext.h"
++#include "autodecref.h"
++#include "sbkstaticstrings_p.h"
++#include "sbkstring.h"
++
++const char *PepExt_TypeGetQualName(PyTypeObject *type)
++{
++    Shiboken::AutoDecRef qualName(PepType_GetQualName(type));
++    return qualName.isNull() ? type->tp_name : Shiboken::String::toCString(qualName.object());
++}
+diff --git a/sources/shiboken6/libshiboken/pep384ext.h b/sources/shiboken6/libshiboken/pep384ext.h
+index f61d7ad5a..158211664 100644
+--- a/sources/shiboken6/libshiboken/pep384ext.h
++++ b/sources/shiboken6/libshiboken/pep384ext.h
+@@ -86,4 +86,6 @@ inline void PepExt_TypeCallFree(PyObject *object)
+     PepExt_Type_GetFreeSlot(Py_TYPE(object))(object);
+ }
+ 
++LIBSHIBOKEN_API const char *PepExt_TypeGetQualName(PyTypeObject *type);
++
+ #endif // PEP384EXT_H
+diff --git a/sources/shiboken6/libshiboken/pep384impl.cpp b/sources/shiboken6/libshiboken/pep384impl.cpp
+index 62e55b523..ef5bf20c3 100644
+--- a/sources/shiboken6/libshiboken/pep384impl.cpp
++++ b/sources/shiboken6/libshiboken/pep384impl.cpp
+@@ -711,6 +711,15 @@ const char *PepType_GetFullyQualifiedNameStr(PyTypeObject *type)
+ #endif
+ }
+ 
++PyObject *PepType_GetQualName(PyTypeObject *type)
++{
++#if !defined(PYPY_VERSION) && ((!defined(Py_LIMITED_API) && PY_VERSION_HEX >= 0x030B0000) || (defined(Py_LIMITED_API) && Py_LIMITED_API >= 0x030B0000))
++    return PyType_GetQualName(type);
++#else
++    return PyObject_GetAttr(reinterpret_cast<PyObject *>(type), Shiboken::PyMagicName::qualname());
++#endif
++}
++
+ // PYSIDE-2264: Find the _functools or functools module and retrieve the
+ //              partial function. This can be tampered with, check carefully.
+ PyObject *
+diff --git a/sources/shiboken6/libshiboken/pep384impl.h b/sources/shiboken6/libshiboken/pep384impl.h
+index 8b24f47c7..c39ff847b 100644
+--- a/sources/shiboken6/libshiboken/pep384impl.h
++++ b/sources/shiboken6/libshiboken/pep384impl.h
+@@ -165,6 +165,8 @@ LIBSHIBOKEN_API const char *PepType_GetNameStr(PyTypeObject *type);
+ /// as C-string
+ LIBSHIBOKEN_API const char *PepType_GetFullyQualifiedNameStr(PyTypeObject *type);
+ 
++LIBSHIBOKEN_API PyObject *PepType_GetQualName(PyTypeObject *type);
++
+ LIBSHIBOKEN_API PyObject *Pep_GetPartialFunction(void);
+ 
+ /*****************************************************************************
+diff --git a/sources/shiboken6/libshiboken/sbkdestructorentry.h b/sources/shiboken6/libshiboken/sbkdestructorentry.h
+new file mode 100644
+index 000000000..929b7dfee
+--- /dev/null
++++ b/sources/shiboken6/libshiboken/sbkdestructorentry.h
+@@ -0,0 +1,24 @@
++// Copyright (C) 2026 The Qt Company Ltd.
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#ifndef SBKDESTRUCTORENTRY_H
++#define SBKDESTRUCTORENTRY_H
++
++extern "C"
++{
++using ObjectDestructor = void (*)(void *);
++}
++
++namespace Shiboken
++{
++
++/// Data required to invoke a C++ destructor
++struct DestructorEntry
++{
++    ObjectDestructor destructor;
++    void *cppInstance;
++};
++
++} // namespace Shiboken
++
++#endif // SBKDESTRUCTORENTRY_H
+diff --git a/sources/shiboken6/shibokenmodule/files.dir/shibokensupport/signature/lib/enum_sig.py b/sources/shiboken6/shibokenmodule/files.dir/shibokensupport/signature/lib/enum_sig.py
+index b31b161a3..0b1e47465 100644
+--- a/sources/shiboken6/shibokenmodule/files.dir/shibokensupport/signature/lib/enum_sig.py
++++ b/sources/shiboken6/shibokenmodule/files.dir/shibokensupport/signature/lib/enum_sig.py
+@@ -149,6 +149,9 @@ class ExactEnumerator:
+                 name = base.__module__ + "." + name
+             bases_list.append(name)
+         bases_str = ', '.join(bases_list)
++        # PYSIDE-2516: see pyi_generator.
++        if class_name in ("Qt.KeyboardModifier", "Qt.Modifier"):
++            bases_str = "_SupportsOrKey"
+         class_str = f"{class_name}" if bases_str == "object" else f"{class_name}({bases_str})"
+         # class_members = inspect.getmembers(klass)
+         # gives us also the inherited things.
+diff --git a/sources/shiboken6/shibokenmodule/files.dir/shibokensupport/signature/lib/pyi_generator.py b/sources/shiboken6/shibokenmodule/files.dir/shibokensupport/signature/lib/pyi_generator.py
+index 4f5866b5c..3b7c5c168 100644
+--- a/sources/shiboken6/shibokenmodule/files.dir/shibokensupport/signature/lib/pyi_generator.py
++++ b/sources/shiboken6/shibokenmodule/files.dir/shibokensupport/signature/lib/pyi_generator.py
+@@ -281,6 +281,7 @@ FROM_IMPORTS = [
+     (None, ["enum"]),
+     (None, ["typing"]),
+     (None, ["collections.abc"]),
++    (None, ["datetime"]),
+     ("PySide6.QtCore", ["PyClassProperty", "Signal", "SignalInstance"]),
+     ("shiboken6", ["Shiboken"]),
+     ]
+@@ -394,6 +395,21 @@ def generate_pyi(import_name, outpath, options):
+                              "bound=PySide6.QtCore.QObject)")
+                     wr.print("_SlotFunc = typing.TypeVar(\"_SlotFunc\", "
+                              "bound=collections.abc.Callable[..., object])")
++                    wr.print()
++                    # PYSIDE-2516: Qt.KeyboardModifier and Qt.Modifier support cross-type | with
++                    # Qt.Key producing QKeyCombination, which enum.Flag.__or__ cannot express.
++                    # Therefore these overloads must be injected manually.
++                    wr.print(dedent("""\
++                        class _SupportsOrKey(enum.Flag): # type: ignore[misc]
++                            @typing.overload
++                            def __or__(self, other: typing.Self) -> Qt.KeyboardModifier: ...
++                            @typing.overload
++                            def __or__(self, other: Qt.Key) -> QKeyCombination: ...
++                            @typing.overload
++                            def __ror__(self, other: typing.Self) -> Qt.KeyboardModifier: ...
++                            @typing.overload
++                            def __ror__(self, other: Qt.Key) -> QKeyCombination: ...
++                    """))
+                 wr.print()
+             else:
+                 wr.print(line)
+diff --git a/sources/shiboken6/shibokenmodule/files.dir/shibokensupport/signature/parser.py b/sources/shiboken6/shibokenmodule/files.dir/shibokensupport/signature/parser.py
+index 8c21e5d71..a95ca46c2 100644
+--- a/sources/shiboken6/shibokenmodule/files.dir/shibokensupport/signature/parser.py
++++ b/sources/shiboken6/shibokenmodule/files.dir/shibokensupport/signature/parser.py
+@@ -12,6 +12,7 @@ import typing
+ import warnings
+ import collections.abc
+ import abc
++import datetime # noqa F:401
+ 
+ from types import SimpleNamespace
+ from shibokensupport.signature.mapping import (type_map, type_map_tuple, update_mapping,
+diff --git a/sources/shiboken6_generator/ApiExtractor/CMakeLists.txt b/sources/shiboken6_generator/ApiExtractor/CMakeLists.txt
+index 6adc3e10d..d726e73b4 100644
+--- a/sources/shiboken6_generator/ApiExtractor/CMakeLists.txt
++++ b/sources/shiboken6_generator/ApiExtractor/CMakeLists.txt
+@@ -12,6 +12,7 @@ set(apiextractor_SRC
+ abstractmetaargument.cpp abstractmetaargument.h
+ abstractmetabuilder.cpp abstractmetabuilder.h abstractmetabuilder_p.h
+ abstractmetabuilder_helpers.cpp
++abstractmetabuilder_testutil.cpp abstractmetabuilder_testutil.h
+ abstractmetaenum.cpp abstractmetaenum.h
+ abstractmetafield.cpp abstractmetafield.h
+ abstractmetafunction.cpp abstractmetafunction.h
+@@ -77,7 +78,8 @@ xmlutils.cpp xmlutils.h xmlutils_libxslt.h xmlutils_qt.h
+ clangparser/clangbuilder.cpp clangparser/clangbuilder.h
+ clangparser/clangdebugutils.cpp clangparser/clangdebugutils.h
+ clangparser/clangparser.cpp clangparser/clangparser.h
+-clangparser/clangutils.cpp clangparser/clangutils.h
++clangparser/clangtype.cpp clangparser/clangtype.h
++clangparser/clangutils.cpp clangparser/clangutils.h clangparser/clang_typedefs.h
+ clangparser/compilersupport.cpp clangparser/compilersupport.h
+ clangparser/triplet.cpp clangparser/triplet.h
+ # Old parser
+diff --git a/sources/shiboken6_generator/ApiExtractor/abstractmetabuilder.cpp b/sources/shiboken6_generator/ApiExtractor/abstractmetabuilder.cpp
+index 107d6c8ee..679aa0300 100644
+--- a/sources/shiboken6_generator/ApiExtractor/abstractmetabuilder.cpp
++++ b/sources/shiboken6_generator/ApiExtractor/abstractmetabuilder.cpp
+@@ -535,6 +535,10 @@ FileModelItem AbstractMetaBuilderPrivate::buildDom(QByteArrayList arguments,
+         for (qsizetype i = 0; i < diagnosticsCount; ++i)
+             d << "  " << diagnostics.at(i) << '\n';
+     }
++
++    if (const auto rejectedTypes = builder.rejectedTypes(); !rejectedTypes.isEmpty())
++        ReportHandler::addGeneralMessage(msgRejectedTypes(rejectedTypes));
++
+     return result;
+ }
+ 
+@@ -816,6 +820,7 @@ void AbstractMetaBuilderPrivate::addAbstractMetaClass(const AbstractMetaClassPtr
+     }
+ }
+ 
++// Returns newly created or continued namespace meta class
+ AbstractMetaClassPtr
+     AbstractMetaBuilderPrivate::traverseNamespace(const FileModelItem &dom,
+                                                   const NamespaceModelItem &namespaceItem)
+@@ -902,7 +907,7 @@ AbstractMetaClassPtr
+     // Traverse namespaces recursively
+     for (const NamespaceModelItem &ni : namespaceItem->namespaces()) {
+         const auto mjc = traverseNamespace(dom, ni);
+-        if (mjc) {
++        if (mjc && !metaClass->innerClasses().contains(mjc)) { // continued namspace?
+             metaClass->addInnerClass(mjc);
+             mjc->setEnclosingClass(metaClass);
+             m_classToItem.insert(mjc, ni.get()); // Add for enum lookup.
+@@ -2236,10 +2241,10 @@ AbstractMetaFunctionPtr
+     if (functionItem->isConstant())
+         signatures.append(signatures.constFirst().left(signatures.constFirst().size() - 5));
+     for (qsizetype i = 0, size = signatures.size(); i < size; ++i) {
+-        const QString normalized =
+-            QString::fromUtf8(QMetaObject::normalizedSignature(signatures.at(i).toUtf8()));
+-        if (normalized != signatures.at(i))
+-            signatures.append(normalized);
++        const QByteArray &signatureBA = signatures.at(i).toUtf8();
++        const QByteArray &normalizedBA = QMetaObject::normalizedSignature(signatureBA.constData());
++        if (normalizedBA != signatureBA)
++            signatures.append(QString::fromUtf8(normalizedBA));
+     }
+ 
+     for (const auto &signature : std::as_const(signatures)) {
+@@ -2874,7 +2879,7 @@ std::optional<AbstractMetaType>
+         newInfo.setIndirectionsV(typeInfo.indirectionsV());
+         newInfo.setConstant(typeInfo.isConstant());
+         newInfo.setVolatile(typeInfo.isVolatile());
+-        newInfo.setFunctionPointer(typeInfo.isFunctionPointer());
++        newInfo.setTypeCategory(typeInfo.typeCategory());
+         newInfo.setQualifiedName(typeInfo.qualifiedName());
+         newInfo.setReferenceType(typeInfo.referenceType());
+         newInfo.setVolatile(typeInfo.isVolatile());
+@@ -3242,7 +3247,7 @@ QString AbstractMetaBuilder::fixDefaultValue(const QString &expr, const Abstract
+ bool AbstractMetaBuilderPrivate::isEnum(const FileModelItem &dom, const QStringList& qualified_name)
+ {
+     CodeModelItem item = CodeModel::findItem(qualified_name, dom);
+-    return item && item->kind() == _EnumModelItem::__node_kind;
++    return item && item->kind() == _CodeModelItem::Kind_Enum;
+ }
+ 
+ AbstractMetaClassPtr
+@@ -3841,8 +3846,7 @@ void AbstractMetaBuilderPrivate::pushScope(const NamespaceModelItem &item)
+         }
+     }
+     if (candidates.size() > 1) {
+-        auto joined = std::make_shared<_NamespaceModelItem>(m_scopes.constLast()->model(),
+-                                                            name, _CodeModelItem::Kind_Namespace);
++        auto joined = std::make_shared<_NamespaceModelItem>(name);
+         joined->setScope(item->scope());
+         for (const auto &n : candidates)
+             joined->appendNamespace(*n);
+diff --git a/sources/shiboken6_generator/ApiExtractor/abstractmetabuilder_testutil.cpp b/sources/shiboken6_generator/ApiExtractor/abstractmetabuilder_testutil.cpp
+new file mode 100644
+index 000000000..87e8a22d3
+--- /dev/null
++++ b/sources/shiboken6_generator/ApiExtractor/abstractmetabuilder_testutil.cpp
+@@ -0,0 +1,78 @@
++// Copyright (C) 2026 The Qt Company Ltd.
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
++
++#include "abstractmetabuilder_testutil.h"
++#include "abstractmetabuilder.h"
++#include "abstractmetabuilder_p.h"
++#include "reporthandler.h"
++#include "typedatabase.h"
++
++#include <QtCore/qbuffer.h>
++#include <QtCore/qdebug.h>
++#include <QtCore/qdir.h>
++#include <QtCore/qtemporaryfile.h>
++
++#include <exception>
++
++static std::unique_ptr<QTemporaryFile> writeCppCode(const char *cppCode)
++{
++    const QString pattern = QDir::tempPath() + QLatin1StringView("/st_XXXXXX_main.cpp");
++    auto result = std::make_unique<QTemporaryFile>(pattern);
++    if (!result->open()) {
++        qWarning("Creation of temporary file failed: %s", qPrintable(result->errorString()));
++        return {};
++    }
++    result->write(cppCode, qint64(qstrlen(cppCode)));
++    result->close();
++    return result;
++}
++
++namespace TestUtil
++{
++std::shared_ptr<_FileModelItem>
++    buildDom(const char *cppCode, bool silent, LanguageLevel languageLevel)
++{
++    ReportHandler::setSilent(silent);
++    ReportHandler::startTimer();
++    auto tempSource = writeCppCode(cppCode);
++    if (!tempSource)
++        return {};
++    return AbstractMetaBuilderPrivate::buildDom({QFile::encodeName(tempSource->fileName())},
++                                                true, languageLevel, 0);
++}
++
++std::unique_ptr<AbstractMetaBuilder>
++    parse(const char *cppCode, const char *xmlCode, bool silent, const QString &apiVersion,
++          const QStringList &dropTypeEntries, LanguageLevel languageLevel)
++{
++    ReportHandler::setSilent(silent);
++    ReportHandler::startTimer();
++    auto *td = TypeDatabase::instance(true);
++    if (apiVersion.isEmpty())
++        TypeDatabase::clearApiVersions();
++    else if (!TypeDatabase::setApiVersion(QLatin1StringView("*"), apiVersion))
++        return nullptr;
++    td->setDropTypeEntries(dropTypeEntries);
++    QBuffer buffer;
++    // parse typesystem
++    buffer.setData(xmlCode);
++    if (!buffer.open(QIODevice::ReadOnly))
++        return nullptr;
++    if (!td->parseFile(&buffer))
++        return nullptr;
++    buffer.close();
++    auto tempSource = writeCppCode(cppCode);
++    if (!tempSource)
++        return nullptr;
++    auto builder = std::make_unique<AbstractMetaBuilder>();
++    try {
++        QByteArrayList arguments{QFile::encodeName(tempSource->fileName())};
++        if (!builder->build(arguments, {}, true, languageLevel))
++            builder.reset();
++    } catch (const std::exception &e) {
++        qWarning("%s", e.what());
++        builder.reset();
++    }
++    return builder;
++}
++} // namespace TestUtil
+diff --git a/sources/shiboken6_generator/ApiExtractor/abstractmetabuilder_testutil.h b/sources/shiboken6_generator/ApiExtractor/abstractmetabuilder_testutil.h
+new file mode 100644
+index 000000000..0c967aa62
+--- /dev/null
++++ b/sources/shiboken6_generator/ApiExtractor/abstractmetabuilder_testutil.h
+@@ -0,0 +1,27 @@
++// Copyright (C) 2026 The Qt Company Ltd.
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
++
++#ifndef ABSTRACTMETABUILDER_TESTUTIL_H
++#define ABSTRACTMETABUILDER_TESTUTIL_H
++
++#include "clangparser/compilersupport.h"
++
++class _FileModelItem;
++class AbstractMetaBuilder;
++
++#include <memory>
++
++namespace TestUtil
++{
++    std::shared_ptr<_FileModelItem>
++        buildDom(const char *cppCode, bool silent = true,
++                 LanguageLevel languageLevel = LanguageLevel::Default);
++
++    std::unique_ptr<AbstractMetaBuilder>
++        parse(const char *cppCode, const char *xmlCode, bool silent = true,
++              const QString &apiVersion = {}, const QStringList &dropTypeEntries = {},
++              LanguageLevel languageLevel = LanguageLevel::Default);
++
++} // namespace TestUtil
++
++#endif // ABSTRACTMETABUILDER_TESTUTIL_H
+diff --git a/sources/shiboken6_generator/ApiExtractor/abstractmetalang.cpp b/sources/shiboken6_generator/ApiExtractor/abstractmetalang.cpp
+index 548cc8515..3206d6f41 100644
+--- a/sources/shiboken6_generator/ApiExtractor/abstractmetalang.cpp
++++ b/sources/shiboken6_generator/ApiExtractor/abstractmetalang.cpp
+@@ -780,11 +780,13 @@ uint AbstractMetaClass::toStringCapabilityIndirections() const
+     return d->m_toStringCapabilityIndirections;
+ }
+ 
+-// Does any of the base classes require deletion in the main thread?
+-bool AbstractMetaClass::deleteInMainThread() const
++// Does any of the base classes require special handling?
++TypeSystem::DeletionMode AbstractMetaClass::deletionMode() const
+ {
+-    return typeEntry()->deleteInMainThread()
+-            || (!d->m_baseClasses.isEmpty() && d->m_baseClasses.constFirst()->deleteInMainThread());
++    auto result = typeEntry()->deletionMode();
++    if (result == TypeSystem::DeletionMode::Default && !d->m_baseClasses.isEmpty())
++        result = d->m_baseClasses.constFirst()->deletionMode();
++    return result;
+ }
+ 
+ bool AbstractMetaClassPrivate::hasConstructors() const
+diff --git a/sources/shiboken6_generator/ApiExtractor/abstractmetalang.h b/sources/shiboken6_generator/ApiExtractor/abstractmetalang.h
+index a6688fd96..84da47387 100644
+--- a/sources/shiboken6_generator/ApiExtractor/abstractmetalang.h
++++ b/sources/shiboken6_generator/ApiExtractor/abstractmetalang.h
+@@ -7,6 +7,7 @@
+ #include "abstractmetalang_enums.h"
+ #include "abstractmetalang_typedefs.h"
+ #include "enclosingclassmixin.h"
++#include "typesystem_enums.h"
+ #include "typesystem_typedefs.h"
+ 
+ #include <QtCore/qobjectdefs.h>
+@@ -321,7 +322,7 @@ public:
+ 
+     uint toStringCapabilityIndirections() const;
+ 
+-    bool deleteInMainThread() const;
++    TypeSystem::DeletionMode deletionMode() const;
+ 
+     // Query functions for generators
+     bool isObjectType() const;
+diff --git a/sources/shiboken6_generator/ApiExtractor/clangparser/clang_typedefs.h b/sources/shiboken6_generator/ApiExtractor/clangparser/clang_typedefs.h
+new file mode 100644
+index 000000000..49efc2592
+--- /dev/null
++++ b/sources/shiboken6_generator/ApiExtractor/clangparser/clang_typedefs.h
+@@ -0,0 +1,19 @@
++// Copyright (C) 2026 The Qt Company Ltd.
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
++
++#ifndef CLANG_TYPEDEFS_H
++#define CLANG_TYPEDEFS_H
++
++#include <clang-c/Index.h>
++
++namespace clang {
++
++#if LLVM_VERSION >= 22
++using PrintingPolicy = CXPrintingPolicy;
++#else
++using PrintingPolicy = void *;
++#endif
++
++} // namespace clang
++
++#endif // CLANG_TYPEDEFS_H
+diff --git a/sources/shiboken6_generator/ApiExtractor/clangparser/clangbuilder.cpp b/sources/shiboken6_generator/ApiExtractor/clangparser/clangbuilder.cpp
+index 8e262d6d8..1bddbc8be 100644
+--- a/sources/shiboken6_generator/ApiExtractor/clangparser/clangbuilder.cpp
++++ b/sources/shiboken6_generator/ApiExtractor/clangparser/clangbuilder.cpp
+@@ -4,6 +4,7 @@
+ #include "clangbuilder.h"
+ #include "compilersupport.h"
+ #include "clangutils.h"
++#include "clangtype.h"
+ #include "clangdebugutils.h"
+ 
+ #include <codemodel.h>
+@@ -19,6 +20,10 @@
+ #include <QtCore/qstack.h>
+ #include <QtCore/qlist.h>
+ 
++#include <algorithm>
++#include <optional>
++#include <set>
++
+ using namespace Qt::StringLiterals;
+ 
+ namespace clang {
+@@ -40,7 +45,7 @@ static inline bool withinClassDeclaration(const CXCursor &cursor)
+     return isClassCursor(clang_getCursorLexicalParent(cursor));
+ }
+ 
+-static QString fixTypeName(QString t)
++static QString fixOperatorTypeName(QString t)
+ {
+     // Fix "Foo &" -> "Foo&", similarly "Bar **" -> "Bar**"
+     auto pos = t.size() - 1;
+@@ -123,13 +128,9 @@ public:
+     using CursorClassHash = QHash<CXCursor, ClassModelItem>;
+     using TypeInfoHash = QHash<CXType, TypeInfo>;
+ 
+-    explicit BuilderPrivate(BaseVisitor *bv) : m_baseVisitor(bv), m_model(new CodeModel)
+-    {
+-       m_scopeStack.push(NamespaceModelItem(new _FileModelItem(m_model)));
+-    }
+-    ~BuilderPrivate()
++    explicit BuilderPrivate(BaseVisitor *bv) : m_baseVisitor(bv)
+     {
+-        delete m_model;
++       m_scopeStack.push(std::make_shared<_FileModelItem>());
+     }
+ 
+     // Determine scope from top item. Note that the scope list does not necessarily
+@@ -163,13 +164,15 @@ public:
+     FunctionModelItem createMemberFunction(const CXCursor &cursor,
+                                            bool isTemplateCode = false);
+     void qualifyConstructor(const CXCursor &cursor);
+-    TypeInfo createTypeInfoUncached(const CXType &type,
+-                                    bool *cacheable = nullptr) const;
+-    TypeInfo createTypeInfo(const CXType &type) const;
+-    TypeInfo createTypeInfo(const CXCursor &cursor) const
++    std::optional<TypeInfo> createTypeInfoUncached(const CXType &type,
++                                                   bool *cacheable = nullptr) const;
++    std::optional<TypeInfo> createTypeInfo(const CXType &type) const;
++    std::optional<TypeInfo> createTypeInfo(const CXCursor &cursor) const
+     { return createTypeInfo(clang_getCursorType(cursor)); }
++    std::optional<TypeInfo> createFunctionTypeInfo(const CXType &type, TypeCategory cat,
++                                                   bool *cacheable) const;
+     void addTemplateInstantiations(const CXType &type,
+-                                   QString *typeName,
++                                   const QString &templateParameters,
+                                    TypeInfo *t) const;
+     bool addTemplateInstantiationsRecursion(const CXType &type, TypeInfo *t) const;
+ 
+@@ -180,7 +183,7 @@ public:
+ 
+     TemplateParameterModelItem createTemplateParameter(const CXCursor &cursor) const;
+     TemplateParameterModelItem createNonTypeTemplateParameter(const CXCursor &cursor) const;
+-    void addField(const CXCursor &cursor);
++    void addField(const CXCursor &cursor, bool staticField = false);
+ 
+     static QString cursorValueExpression(BaseVisitor *bv, const CXCursor &cursor);
+     std::pair<QString, ClassModelItem> getBaseClass(CXType type) const;
+@@ -193,7 +196,6 @@ public:
+     void setFileName(const CXCursor &cursor, _CodeModelItem *item) const;
+ 
+     BaseVisitor *m_baseVisitor;
+-    CodeModel *m_model;
+ 
+     QStack<ScopeModelItem> m_scopeStack;
+     QStringList m_scope;
+@@ -220,12 +222,13 @@ public:
+     CodeModel::FunctionType m_currentFunctionType = CodeModel::Normal;
+     bool m_withinFriendDecl = false;
+     mutable QHash<QString, SpecialSystemHeader> m_systemHeaders;
++    mutable std::set<QString> m_rejectedTypes;
+ };
+ 
+ bool BuilderPrivate::addClass(const CXCursor &cursor, CodeModel::ClassType t)
+ {
+     QString className = getCursorSpelling(cursor);
+-    m_currentClass = std::make_shared<_ClassModelItem>(m_model, className);
++    m_currentClass = std::make_shared<_ClassModelItem>(className);
+     setFileName(cursor, m_currentClass.get());
+     m_currentClass->setClassType(t);
+     // Some inner class? Note that it does not need to be (lexically) contained in a
+@@ -329,11 +332,14 @@ FunctionModelItem BuilderPrivate::createFunction(const CXCursor &cursor,
+     QString name = getCursorSpelling(cursor);
+     // Apply type fixes to "operator X &" -> "operator X&"
+     if (name.startsWith(u"operator "))
+-        name = fixTypeName(name);
+-    auto result = std::make_shared<_FunctionModelItem>(m_model, name);
++        name = fixOperatorTypeName(name);
++    auto result = std::make_shared<_FunctionModelItem>(name);
+     setFileName(cursor, result.get());
+     const auto type = clang_getCursorResultType(cursor);
+-    result->setType(createTypeInfo(type));
++    auto resultTypeO = createTypeInfo(type);
++    if (!resultTypeO.has_value())
++        return {};
++    result->setType(resultTypeO.value());
+     result->setScopeResolution(hasScopeResolution(type));
+     result->setFunctionType(t);
+     result->setScope(m_scope);
+@@ -392,6 +398,8 @@ FunctionModelItem BuilderPrivate::createMemberFunction(const CXCursor &cursor,
+         : functionTypeFromCursor(cursor);
+     isTemplateCode |= m_currentClass->name().endsWith(u'>');
+     auto result = createFunction(cursor, functionType, isTemplateCode);
++    if (!result)
++        return result;
+     result->setAccessPolicy(accessPolicy(clang_getCXXAccessSpecifier(cursor)));
+     result->setConstant(clang_CXXMethod_isConst(cursor) != 0);
+     result->setAttribute(FunctionAttribute::Static, clang_CXXMethod_isStatic(cursor) != 0);
+@@ -420,50 +428,36 @@ void BuilderPrivate::qualifyConstructor(const CXCursor &cursor)
+ 
+ TemplateParameterModelItem BuilderPrivate::createTemplateParameter(const CXCursor &cursor) const
+ {
+-    return std::make_shared<_TemplateParameterModelItem>(m_model, getCursorSpelling(cursor));
++    return std::make_shared<_TemplateParameterModelItem>(getCursorSpelling(cursor));
+ }
+ 
+ TemplateParameterModelItem BuilderPrivate::createNonTypeTemplateParameter(const CXCursor &cursor) const
+ {
++    auto typeO = createTypeInfo(clang_getCursorType(cursor));
++    if (!typeO.has_value())
++        return {};
+     TemplateParameterModelItem result = createTemplateParameter(cursor);
+-    result->setType(createTypeInfo(clang_getCursorType(cursor)));
++    result->setType(typeO.value());
+     return result;
+ }
+ 
+ // CXCursor_VarDecl, CXCursor_FieldDecl cursors
+-void BuilderPrivate::addField(const CXCursor &cursor)
++void BuilderPrivate::addField(const CXCursor &cursor, bool staticField)
+ {
+-    auto field = std::make_shared<_VariableModelItem>(m_model, getCursorSpelling(cursor));
++    auto typeO = createTypeInfo(cursor);
++    if (!typeO.has_value())
++        return;
++    auto field = std::make_shared<_VariableModelItem>(getCursorSpelling(cursor));
+     field->setAccessPolicy(accessPolicy(clang_getCXXAccessSpecifier(cursor)));
+     field->setScope(m_scope);
+-    field->setType(createTypeInfo(cursor));
++    field->setType(typeO.value());
+     field->setMutable(clang_CXXField_isMutable(cursor) != 0);
++    field->setStatic(staticField);
+     setFileName(cursor, field.get());
+     m_currentField = field;
+     m_scopeStack.back()->addVariable(field);
+ }
+ 
+-// Create qualified name "std::list<std::string>" -> ("std", "list<std::string>")
+-static QStringList qualifiedName(const QString &t)
+-{
+-    QStringList result;
+-    auto end = t.indexOf(u'<');
+-    if (end == -1)
+-        end = t.indexOf(u'(');
+-    if (end == -1)
+-        end = t.size();
+-    qsizetype lastPos = 0;
+-    while (true) {
+-        const auto nextPos = t.indexOf(u"::"_s, lastPos);
+-        if (nextPos < 0 || nextPos >= end)
+-            break;
+-        result.append(t.mid(lastPos, nextPos - lastPos));
+-        lastPos = nextPos + 2;
+-    }
+-    result.append(t.right(t.size() - lastPos));
+-    return result;
+-}
+-
+ static bool isArrayType(CXTypeKind k)
+ {
+     return k == CXType_ConstantArray || k == CXType_IncompleteArray
+@@ -489,7 +483,10 @@ bool BuilderPrivate::addTemplateInstantiationsRecursion(const CXType &type, Type
+                 // of a non-type template (template <int v>).
+                 if (argType.kind == CXType_Invalid)
+                     return false;
+-                t->addInstantiation(createTypeInfoUncached(argType));
++                auto typeO = createTypeInfoUncached(argType);
++                if (!typeO.has_value())
++                    return false;
++                t->addInstantiation(typeO.value());
+             }
+         }
+         break;
+@@ -499,10 +496,8 @@ bool BuilderPrivate::addTemplateInstantiationsRecursion(const CXType &type, Type
+     return true;
+ }
+ 
+-static void dummyTemplateArgumentHandler(int, QStringView) {}
+-
+ void BuilderPrivate::addTemplateInstantiations(const CXType &type,
+-                                               QString *typeName,
++                                               const QString &templateParameters,
+                                                TypeInfo *t) const
+ {
+     // In most cases, for templates like "Vector<A>", Clang will give us the
+@@ -513,16 +508,12 @@ void BuilderPrivate::addTemplateInstantiations(const CXType &type,
+     //    Vector(const Vector&);
+     // };
+     // In that case, have TypeInfo parse the list from the spelling.
+-    // Finally, remove the list "<>" from the type name.
+     const bool parsed = addTemplateInstantiationsRecursion(type, t)
+         && !t->instantiations().isEmpty();
+-    if (!parsed)
++    if (!parsed) {
+         t->setInstantiations({});
+-    const auto pos = parsed
+-        ? parseTemplateArgumentList(*typeName, dummyTemplateArgumentHandler)
+-        : t->parseTemplateArgumentList(*typeName);
+-    if (pos.first != -1 && pos.second != -1 && pos.second > pos.first)
+-        typeName->remove(pos.first, pos.second - pos.first);
++        t->parseTemplateArgumentList(templateParameters);
++    }
+ }
+ 
+ static TypeCategory typeCategoryFromClang(CXTypeKind k)
+@@ -546,22 +537,59 @@ static TypeCategory typeCategoryFromClang(CXTypeKind k)
+     return TypeCategory::Other;
+ }
+ 
+-TypeInfo BuilderPrivate::createTypeInfoUncached(const CXType &type,
+-                                                bool *cacheable) const
++// Reject decltype() expressions, template parameter packs, etc.
++static inline bool checkTypeName(const QString &name)
+ {
++    static constexpr QLatin1StringView exclusions[] = {
++        "decltype("_L1, "std::declval"_L1, "::detail::"_L1, "std::enable_if<"_L1,
++        "template "_L1, "..."_L1
++    };
++
++    auto excludedPred = [&name](QLatin1StringView ex) { return name.contains(ex); };
++    return std::none_of(std::begin(exclusions), std::end(exclusions), excludedPred);
++}
++
++static QString fixTypeName(QString typeName)
++{
++    while (TypeInfo::stripLeadingConst(&typeName) || TypeInfo::stripLeadingVolatile(&typeName)) {
++    }
++    static constexpr auto leadingTypename = "typename "_L1;
++    if (typeName.startsWith(leadingTypename))
++        typeName.remove(0, leadingTypename.size());
++    typeName.replace("<typename "_L1, "<"_L1);
++    typeName.replace(", typename "_L1, ", "_L1);
++    return typeName;
++}
++
++std::optional<TypeInfo>
++    BuilderPrivate::createFunctionTypeInfo(const CXType &type, TypeCategory cat, bool *cacheable) const
++{
++    const int argCount = clang_getNumArgTypes(type);
++    if (argCount < 0)
++        return std::nullopt;
++    auto resultO = createTypeInfoUncached(clang_getResultType(type), cacheable);
++    if (!resultO.has_value())
++        return std::nullopt;
++    resultO->setTypeCategory(cat);
++    for (int a = 0; a < argCount; ++a) {
++        auto argTypeO = createTypeInfoUncached(clang_getArgType(type, unsigned(a)), cacheable);
++        if (!argTypeO.has_value())
++            return std::nullopt;
++        resultO->addArgument(argTypeO.value());
++    }
++    return resultO;
++}
++
++std::optional<TypeInfo>
++    BuilderPrivate::createTypeInfoUncached(const CXType &type, bool *cacheable) const
++{
++    if (type.kind == CXType_FunctionProto)
++        return createFunctionTypeInfo(type, TypeCategory::Function, cacheable);
++
+     if (type.kind == CXType_Pointer) { // Check for function pointers, first.
+         const CXType pointeeType = clang_getPointeeType(type);
+-        const int argCount = clang_getNumArgTypes(pointeeType);
+-        if (argCount >= 0) {
+-            TypeInfo result = createTypeInfoUncached(clang_getResultType(pointeeType),
+-                                                     cacheable);
+-            result.setTypeCategory(TypeCategory::Pointer);
+-            result.setFunctionPointer(true);
+-            for (int a = 0; a < argCount; ++a)
+-                result.addArgument(createTypeInfoUncached(clang_getArgType(pointeeType, unsigned(a)),
+-                                                          cacheable));
+-            return result;
+-        }
++        if (pointeeType.kind == CXType_FunctionProto)
++            return createFunctionTypeInfo(pointeeType, TypeCategory::FunctionPointer, cacheable);
+     }
+ 
+     TypeInfo typeInfo;
+@@ -595,9 +623,12 @@ TypeInfo BuilderPrivate::createTypeInfoUncached(const CXType &type,
+     typeInfo.setConstant(clang_isConstQualifiedType(nestedType) != 0);
+     typeInfo.setVolatile(clang_isVolatileQualifiedType(nestedType) != 0);
+ 
+-    QString typeName = getResolvedTypeName(nestedType);
+-    while (TypeInfo::stripLeadingConst(&typeName)
+-           || TypeInfo::stripLeadingVolatile(&typeName)) {
++    QString typeName = fixTypeName(getResolvedTypeName(nestedType,
++                                                       m_baseVisitor->printingPolicy()));
++
++    if (!checkTypeName(typeName)) {
++        m_rejectedTypes.insert(typeName);
++        return std::nullopt;
+     }
+ 
+     // For typedefs within templates or nested classes within templates (iterators):
+@@ -619,33 +650,44 @@ TypeInfo BuilderPrivate::createTypeInfoUncached(const CXType &type,
+ 
+     // Obtain template instantiations if the name has '<' (thus excluding
+     // typedefs like "std::string".
+-    if (typeName.contains(u'<'))
+-        addTemplateInstantiations(nestedType, &typeName, &typeInfo);
+ 
+-    typeInfo.setQualifiedName(qualifiedName(typeName));
++    auto clangTypeNameO = clang::parseTypeName(typeName);
++    if (!clangTypeNameO.has_value()) {
++        m_rejectedTypes.insert(typeName);
++        return std::nullopt;
++    }
++
++    const auto &clangTypeName = clangTypeNameO.value();
++    if (!clangTypeName.templateParameters.isEmpty())
++        addTemplateInstantiations(nestedType, clangTypeName.templateParameters, &typeInfo);
++
++    typeInfo.setQualifiedName(clangTypeName.name.split("::"_L1));
+     // 3320:CINDEX_LINKAGE int clang_getNumArgTypes(CXType T); function ptr types?
+     typeInfo.simplifyStdType();
+     return typeInfo;
+ }
+ 
+-TypeInfo BuilderPrivate::createTypeInfo(const CXType &type) const
++std::optional<TypeInfo> BuilderPrivate::createTypeInfo(const CXType &type) const
+ {
+     const auto it = m_typeInfoHash.constFind(type);
+     if (it != m_typeInfoHash.constEnd())
+         return it.value();
+     bool cacheable = true;
+-    TypeInfo result = createTypeInfoUncached(type, &cacheable);
+-    if (cacheable)
+-        m_typeInfoHash.insert(type, result);
+-    return result;
++    auto resultO = createTypeInfoUncached(type, &cacheable);
++    if (resultO.has_value() && cacheable)
++        m_typeInfoHash.insert(type, resultO.value());
++    return resultO;
+ }
+ 
+ void BuilderPrivate::addTypeDef(const CXCursor &cursor, const CXType &cxType)
+ {
+     const QString target = getCursorSpelling(cursor);
+-    auto item = std::make_shared<_TypeDefModelItem>(m_model, target);
++    auto typeInfoO = createTypeInfo(cxType);
++    if (!typeInfoO.has_value())
++        return;
++    auto item = std::make_shared<_TypeDefModelItem>(target);
+     setFileName(cursor, item.get());
+-    item->setType(createTypeInfo(cxType));
++    item->setType(typeInfoO.value());
+     item->setScope(m_scope);
+     item->setAccessPolicy(accessPolicy(clang_getCXXAccessSpecifier(cursor)));
+     m_scopeStack.back()->addTypeDef(item);
+@@ -664,7 +706,7 @@ ClassModelItem BuilderPrivate::currentTemplateClass() const
+ void BuilderPrivate::startTemplateTypeAlias(const CXCursor &cursor)
+ {
+     const QString target = getCursorSpelling(cursor);
+-    m_currentTemplateTypeAlias = std::make_shared<_TemplateTypeAliasModelItem>(m_model, target);
++    m_currentTemplateTypeAlias = std::make_shared<_TemplateTypeAliasModelItem>(target);
+     setFileName(cursor, m_currentTemplateTypeAlias.get());
+     m_currentTemplateTypeAlias->setScope(m_scope);
+ }
+@@ -675,8 +717,10 @@ void BuilderPrivate::endTemplateTypeAlias(const CXCursor &typeAliasCursor)
+     // Usually "<elaborated>std::list<T>" or "<unexposed>Container1<T>",
+     // as obtained with parser of PYSIDE-323
+     if (type.kind == CXType_Unexposed || type.kind == CXType_Elaborated) {
+-        m_currentTemplateTypeAlias->setType(createTypeInfo(type));
+-        m_scopeStack.back()->addTemplateTypeAlias(m_currentTemplateTypeAlias);
++        if (auto typeO = createTypeInfo(type)) {
++            m_currentTemplateTypeAlias->setType(typeO.value());
++            m_scopeStack.back()->addTemplateTypeAlias(m_currentTemplateTypeAlias);
++        }
+     }
+     m_currentTemplateTypeAlias.reset();
+ }
+@@ -733,9 +777,11 @@ std::pair<QString, ClassModelItem> BuilderPrivate::getBaseClass(CXType type) con
+ {
+     const auto decl = resolveBaseClassType(type);
+     // Note: spelling has "struct baseClass", use type
+-    QString baseClassName = getTypeName(decl.type);
+-    if (baseClassName.startsWith(u"std::")) // Simplify "std::" types
+-        baseClassName = createTypeInfo(decl.type).toString();
++    QString baseClassName = getTypeName(decl.type, m_baseVisitor->printingPolicy());
++    if (baseClassName.startsWith(u"std::")) { // Simplify "std::" types
++        if (auto typeO = createTypeInfo(decl.type))
++            baseClassName = typeO.value().toString();
++    }
+ 
+     auto it = m_cursorClassHash.constFind(decl.declaration);
+     // Not found: Set unqualified name. This happens in cases like
+@@ -917,6 +963,11 @@ FileModelItem Builder::dom() const
+     return std::dynamic_pointer_cast<_FileModelItem>(rootScope);
+ }
+ 
++QStringList Builder::rejectedTypes() const
++{
++    return {d->m_rejectedTypes.cbegin(), d->m_rejectedTypes.cend()};
++}
++
+ static QString msgOutOfOrder(const CXCursor &cursor, const char *expectedScope)
+ {
+     return getCursorKindName(cursor.kind) + u' '
+@@ -945,7 +996,7 @@ static NamespaceType namespaceType(const CXCursor &cursor)
+     return NamespaceType::Default;
+ }
+ 
+-static QString enumType(const CXCursor &cursor)
++static QString enumType(const CXCursor &cursor, PrintingPolicy p)
+ {
+     QString name = getCursorSpelling(cursor); // "enum Foo { v1, v2 };"
+     if (name.contains(u"unnamed enum")) // Clang 16.0
+@@ -953,7 +1004,7 @@ static QString enumType(const CXCursor &cursor)
+     if (name.isEmpty()) {
+         // PYSIDE-1228: For "typedef enum { v1, v2 } Foo;", type will return
+         // "Foo" as expected. Care must be taken to exclude real anonymous enums.
+-        name = getTypeName(clang_getCursorType(cursor));
++        name = getTypeName(clang_getCursorType(cursor), p);
+         if (name.contains(u"(unnamed") // Clang 12.0.1
+             || name.contains(u"(anonymous")) { // earlier
+             name.clear();
+@@ -1011,7 +1062,7 @@ BaseVisitor::StartTokenResult Builder::startToken(const CXCursor &cursor)
+         d->m_scope.back() += "<>"_L1;
+         break;
+     case CXCursor_EnumDecl: {
+-        QString name = enumType(cursor);
++        QString name = enumType(cursor, printingPolicy());
+         EnumKind kind = CEnum;
+         if (name.isEmpty()) {
+             kind = AnonymousEnum;
+@@ -1023,7 +1074,7 @@ BaseVisitor::StartTokenResult Builder::startToken(const CXCursor &cursor)
+ #endif
+             kind = EnumClass;
+         }
+-        d->m_currentEnum = std::make_shared<_EnumModelItem>(d->m_model, name);
++        d->m_currentEnum = std::make_shared<_EnumModelItem>(name);
+         d->setFileName(cursor, d->m_currentEnum.get());
+         d->m_currentEnum->setScope(d->m_scope);
+         d->m_currentEnum->setEnumKind(kind);
+@@ -1031,7 +1082,7 @@ BaseVisitor::StartTokenResult Builder::startToken(const CXCursor &cursor)
+             d->m_currentEnum->setDeprecated(true);
+         const auto enumType = fullyResolveType(clang_getEnumDeclIntegerType(cursor));
+         d->m_currentEnum->setSigned(isSigned(enumType.kind));
+-        d->m_currentEnum->setUnderlyingType(getTypeName(enumType));
++        d->m_currentEnum->setUnderlyingType(getTypeName(enumType, printingPolicy()));
+         if (std::dynamic_pointer_cast<_ClassModelItem>(d->m_scopeStack.back()))
+             d->m_currentEnum->setAccessPolicy(accessPolicy(clang_getCXXAccessSpecifier(cursor)));
+     }
+@@ -1049,7 +1100,7 @@ BaseVisitor::StartTokenResult Builder::startToken(const CXCursor &cursor)
+             enumValue.setValue(clang_getEnumConstantDeclValue(cursor));
+         else
+             enumValue.setUnsignedValue(clang_getEnumConstantDeclUnsignedValue(cursor));
+-        auto enumConstant = std::make_shared<_EnumeratorModelItem>(d->m_model, name);
++        auto enumConstant = std::make_shared<_EnumeratorModelItem>(name);
+         enumConstant->setStringValue(BuilderPrivate::cursorValueExpression(this, cursor));
+         enumConstant->setValue(enumValue);
+         if (clang_getCursorAvailability(cursor) == CXAvailability_Deprecated)
+@@ -1059,10 +1110,8 @@ BaseVisitor::StartTokenResult Builder::startToken(const CXCursor &cursor)
+         break;
+     case CXCursor_VarDecl:
+         // static class members are seen as CXCursor_VarDecl
+-        if (isClassOrNamespaceCursor(clang_getCursorSemanticParent(cursor))) {
+-             d->addField(cursor);
+-             d->m_currentField->setStatic(true);
+-        }
++        if (isClassOrNamespaceCursor(clang_getCursorSemanticParent(cursor)))
++            d->addField(cursor, true);
+         break;
+     case CXCursor_FieldDecl:
+         d->addField(cursor);
+@@ -1073,13 +1122,16 @@ BaseVisitor::StartTokenResult Builder::startToken(const CXCursor &cursor)
+     case CXCursor_Constructor:
+     case CXCursor_Destructor: // Note: Also use clang_CXXConstructor_is..Constructor?
+     case CXCursor_CXXMethod:
+-    case CXCursor_ConversionFunction:
++    case CXCursor_ConversionFunction: {
+         // Member functions of other classes can be declared to be friends.
+         // Skip inline member functions outside class, only go by declarations inside class
+         if (d->m_withinFriendDecl || !withinClassDeclaration(cursor))
+             return Skip;
+-        d->m_currentFunction = d->createMemberFunction(cursor, false);
+-        d->m_scopeStack.back()->addFunction(d->m_currentFunction);
++        auto func = d->createMemberFunction(cursor, false);
++        if (!func)
++            return Skip;
++        d->m_currentFunction = func;
++    }
+         break;
+     // Not fully supported, currently, seen as normal function
+     // Note: May appear inside class (member template) or outside (free template).
+@@ -1087,31 +1139,30 @@ BaseVisitor::StartTokenResult Builder::startToken(const CXCursor &cursor)
+         const CXCursor semParent = clang_getCursorSemanticParent(cursor);
+         if (isClassCursor(semParent)) {
+             if (semParent == clang_getCursorLexicalParent(cursor)) {
+-                d->m_currentFunction = d->createMemberFunction(cursor, true);
+-                d->m_scopeStack.back()->addFunction(d->m_currentFunction);
+-                break;
++                if (auto func = d->createMemberFunction(cursor, true)) {
++                    d->m_currentFunction = func;
++                    break;
++                }
+             }
+             return Skip; // inline member functions outside class
+         }
+-    }
+-        d->m_currentFunction = d->createFunction(cursor, CodeModel::Normal, true);
++        auto func = d->createFunction(cursor, CodeModel::Normal, true);
++        if (!func)
++            return Skip;
++        d->m_currentFunction = func;
+         d->setFileName(cursor, d->m_currentFunction.get());
+-        d->m_scopeStack.back()->addFunction(d->m_currentFunction);
++    }
+         break;
+     case CXCursor_FunctionDecl:
+         // Free functions or functions completely defined within "friend" (class
+         // operators). Note: CXTranslationUnit_SkipFunctionBodies must be off for
+         // clang_isCursorDefinition() to work here.
+         if (!d->m_withinFriendDecl || clang_isCursorDefinition(cursor) != 0) {
+-            auto scope = d->m_scopeStack.size() - 1; // enclosing class
+-            if (d->m_withinFriendDecl) {
+-                // Friend declaration: go back to namespace or file scope.
+-                for (--scope;  d->m_scopeStack.at(scope)->kind() == _CodeModelItem::Kind_Class; --scope) {
+-                }
+-            }
+-            d->m_currentFunction = d->createFunction(cursor, CodeModel::Normal, false);
++            auto func = d->createFunction(cursor, CodeModel::Normal, false);
++            if (!func)
++                return Skip;
++            d->m_currentFunction = func;
+             d->m_currentFunction->setHiddenFriend(d->m_withinFriendDecl);
+-            d->m_scopeStack.at(scope)->addFunction(d->m_currentFunction);
+         }
+         break;
+     case CXCursor_Namespace: {
+@@ -1128,10 +1179,7 @@ BaseVisitor::StartTokenResult Builder::startToken(const CXCursor &cursor)
+             appendDiagnostic(d);
+             return Error;
+         }
+-        // Treat namespaces separately to allow for extending namespaces
+-        // in subsequent modules.
+-        NamespaceModelItem namespaceItem = parentNamespaceItem->findNamespace(name);
+-        namespaceItem = std::make_shared<_NamespaceModelItem>(d->m_model, name);
++        auto namespaceItem = std::make_shared<_NamespaceModelItem>(name);
+         d->setFileName(cursor, namespaceItem.get());
+         namespaceItem->setScope(d->m_scope);
+         namespaceItem->setType(type);
+@@ -1144,10 +1192,15 @@ BaseVisitor::StartTokenResult Builder::startToken(const CXCursor &cursor)
+         // and function pointer typedefs.
+         if (!d->m_currentArgument && d->m_currentFunction) {
+             const QString name = getCursorSpelling(cursor);
+-            d->m_currentArgument = std::make_shared<_ArgumentModelItem>(d->m_model, name);
+             const auto type = clang_getCursorType(cursor);
++            auto typeO = d->createTypeInfo(type);
++            if (!typeO.has_value()) {
++                d->m_currentFunction.reset();
++                return Skip;
++            }
++            d->m_currentArgument = std::make_shared<_ArgumentModelItem>(name);
+             d->m_currentArgument->setScopeResolution(hasScopeResolution(type));
+-            d->m_currentArgument->setType(d->createTypeInfo(type));
++            d->m_currentArgument->setType(typeO.value());
+             d->m_currentFunction->addArgument(d->m_currentArgument);
+             QString defaultValueExpression = BuilderPrivate::cursorValueExpression(this, cursor);
+             if (!defaultValueExpression.isEmpty()) {
+@@ -1164,10 +1217,30 @@ BaseVisitor::StartTokenResult Builder::startToken(const CXCursor &cursor)
+             ? d->createTemplateParameter(cursor) : d->createNonTypeTemplateParameter(cursor);
+         // Apply to function/member template?
+         if (d->m_currentFunction) {
+-            d->m_currentFunction->setTemplateParameters(d->m_currentFunction->templateParameters() << tItem);
++            if (!tItem) {
++                d->m_currentFunction.reset();
++                return Skip;
++            }
++            d->m_currentFunction->addTemplateParameter(tItem);
+         } else if (d->m_currentTemplateTypeAlias) {
++            if (!tItem) {
++                d->m_currentTemplateTypeAlias.reset();
++                return Skip;
++            }
+             d->m_currentTemplateTypeAlias->addTemplateParameter(tItem);
+         } else if (d->m_currentClass) { // Apply to class
++            if (!tItem) {
++                // Failure is fatal if the first parameter cannot be determined, trailing
++                // parameters will be warned about.
++                const bool fatal = d->m_currentClass->templateParameters().isEmpty();
++                const QString message = "Failed to determine template parameter of "_L1
++                                        + d->m_currentClass->name();
++                const Diagnostic d(message, cursor,
++                                   fatal ? CXDiagnostic_Error : CXDiagnostic_Warning);
++                qWarning() << d;
++                appendDiagnostic(d);
++                return fatal ? Error : Skip;
++            }
+             const QString &tplParmName = tItem->name();
+             if (Q_UNLIKELY(!insertTemplateParameterIntoClassName(tplParmName, d->m_currentClass)
+                            || !insertTemplateParameterIntoClassName(tplParmName, &d->m_scope.back()))) {
+@@ -1178,7 +1251,7 @@ BaseVisitor::StartTokenResult Builder::startToken(const CXCursor &cursor)
+                 appendDiagnostic(d);
+                 return Error;
+             }
+-            d->m_currentClass->setTemplateParameters(d->m_currentClass->templateParameters() << tItem);
++            d->m_currentClass->addTemplateParameter(tItem);
+         }
+     }
+         break;
+@@ -1289,9 +1362,10 @@ bool Builder::endToken(const CXCursor &cursor)
+         d->m_currentField.reset();
+         break;
+     case CXCursor_Constructor:
+-        d->qualifyConstructor(cursor);
+         if (d->m_currentFunction) {
++            d->qualifyConstructor(cursor);
+             d->m_currentFunction->_determineType();
++            d->m_scopeStack.back()->addFunction(d->m_currentFunction);
+             d->m_currentFunction.reset();
+         }
+         break;
+@@ -1301,12 +1375,28 @@ bool Builder::endToken(const CXCursor &cursor)
+     case CXCursor_FunctionTemplate:
+         if (d->m_currentFunction) {
+             d->m_currentFunction->_determineType();
++            auto scope = d->m_scopeStack.size() - 1; // enclosing class
++            if (cursor.kind == CXCursor_FunctionDecl) {
++                // Free functions or functions completely defined within "friend" (class
++                // operators).
++                if (!d->m_withinFriendDecl || clang_isCursorDefinition(cursor) != 0) {
++                    if (d->m_withinFriendDecl) {
++                        // Friend declaration: go back to namespace or file scope.
++                        for (--scope;
++                             d->m_scopeStack.at(scope)->kind() == _CodeModelItem::Kind_Class;
++                             --scope) {
++                        }
++                    }
++                }
++            }
++            d->m_scopeStack.at(scope)->addFunction(d->m_currentFunction);
+             d->m_currentFunction.reset();
+         }
+         break;
+     case CXCursor_ConversionFunction:
+         if (d->m_currentFunction) {
+             d->m_currentFunction->setFunctionType(CodeModel::ConversionOperator);
++            d->m_scopeStack.back()->addFunction(d->m_currentFunction);
+             d->m_currentFunction.reset();
+         }
+         break;
+diff --git a/sources/shiboken6_generator/ApiExtractor/clangparser/clangbuilder.h b/sources/shiboken6_generator/ApiExtractor/clangparser/clangbuilder.h
+index f60bbe155..4cc58d08d 100644
+--- a/sources/shiboken6_generator/ApiExtractor/clangparser/clangbuilder.h
++++ b/sources/shiboken6_generator/ApiExtractor/clangparser/clangbuilder.h
+@@ -33,6 +33,8 @@ public:
+ 
+     FileModelItem dom() const;
+ 
++    QStringList rejectedTypes() const;
++
+ private:
+     BuilderPrivate *d;
+ };
+diff --git a/sources/shiboken6_generator/ApiExtractor/clangparser/clangparser.cpp b/sources/shiboken6_generator/ApiExtractor/clangparser/clangparser.cpp
+index 46d2a26f7..ff18e9657 100644
+--- a/sources/shiboken6_generator/ApiExtractor/clangparser/clangparser.cpp
++++ b/sources/shiboken6_generator/ApiExtractor/clangparser/clangparser.cpp
+@@ -285,7 +285,8 @@ static void setupTarget(CXTranslationUnit translationUnit)
+     QString message;
+     {
+         QTextStream str(&message);
+-        str << "CLANG v" << CINDEX_VERSION_MAJOR << '.' << CINDEX_VERSION_MINOR
++        str << "CLANG v" << LLVM_VERSION << '/'
++            << CINDEX_VERSION_MAJOR << '.' << CINDEX_VERSION_MINOR
+             << " targeting \"" << targetTriple << "\"/"
+             << optionsTriplet().compilerTripletValue()
+             << ", " << pointerSize << "bit";
+@@ -320,9 +321,19 @@ bool parse(const QByteArrayList  &clangArgs, bool addCompilerSupportArguments,
+     setupTarget(translationUnit);
+ 
+     CXCursor rootCursor = clang_getTranslationUnitCursor(translationUnit);
++#if LLVM_VERSION >= 22
++    CXPrintingPolicy printingPolicy = clang_getCursorPrintingPolicy(rootCursor);
++    clang_PrintingPolicy_setProperty(printingPolicy, CXPrintingPolicy_IncludeNewlines, 0);
++    bv.setPrintingPolicy(printingPolicy);
++#endif
+ 
+     clang_visitChildren(rootCursor, visitorCallback, reinterpret_cast<CXClientData>(&bv));
+ 
++#if LLVM_VERSION >= 22
++    bv.setPrintingPolicy(nullptr);
++    clang_PrintingPolicy_dispose(printingPolicy);
++#endif
++
+     QList<Diagnostic> diagnostics = getDiagnostics(translationUnit);
+     diagnostics.append(bv.diagnostics());
+     bv.setDiagnostics(diagnostics);
+diff --git a/sources/shiboken6_generator/ApiExtractor/clangparser/clangparser.h b/sources/shiboken6_generator/ApiExtractor/clangparser/clangparser.h
+index 79dc855e2..7cc47e849 100644
+--- a/sources/shiboken6_generator/ApiExtractor/clangparser/clangparser.h
++++ b/sources/shiboken6_generator/ApiExtractor/clangparser/clangparser.h
+@@ -4,7 +4,7 @@
+ #ifndef CLANGPARSER_H
+ #define CLANGPARSER_H
+ 
+-#include <clang-c/Index.h>
++#include "clang_typedefs.h"
+ 
+ #include <QtCore/qbytearraylist.h>
+ #include <QtCore/qhash.h>
+@@ -72,10 +72,14 @@ public:
+     // For usage by the parser
+     bool _handleVisitLocation( const CXSourceLocation &location);
+ 
++    PrintingPolicy printingPolicy() const { return m_printingPolicy; }
++    void setPrintingPolicy(CXPrintingPolicy p) { m_printingPolicy = p; }
++
+ private:
+     SourceFileCache m_fileCache;
+     Diagnostics m_diagnostics;
+     CXFile m_currentCxFile{};
++    PrintingPolicy m_printingPolicy = nullptr;
+     bool m_visitCurrent = true;
+ };
+ 
+diff --git a/sources/shiboken6_generator/ApiExtractor/clangparser/clangtype.cpp b/sources/shiboken6_generator/ApiExtractor/clangparser/clangtype.cpp
+new file mode 100644
+index 000000000..bd455bd53
+--- /dev/null
++++ b/sources/shiboken6_generator/ApiExtractor/clangparser/clangtype.cpp
+@@ -0,0 +1,83 @@
++// Copyright (C) 2026 The Qt Company Ltd.
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
++
++#include "clangtype.h"
++
++#include <QtCore/qdebug.h>
++
++using namespace Qt::StringLiterals;
++
++// Up until clang version 21, clang_getTypeSpelling() was used to retrieve type names,
++// which returned fully qualified names. In clang 22, clang_getTypeSpelling() was
++// changed to return the actual spelling, that is, no longer return fully qualified names
++// (from for example inner class contexts) unless they were spelled out.
++// clang_getFullyQualifiedName() was provided as a replacement, but that returns
++// template parameters of the class as well, that is, "std::list<int>::value_type"
++// instead of "std::list::value_type". Those they need to be removed for the
++// type entry lookup system to work. This is done by parseTypeName().
++// FIXME: Keep checking whether this can be replaced by a CXPrintingPolicy setting
++// in a later clang version.
++
++namespace clang {
++
++// Find the start of a template starting from the closing '>'
++static qsizetype findTemplateStart(QStringView sv, qsizetype pos)
++{
++    Q_ASSERT(pos > 0 && pos < sv.size() && sv.at(pos) == u'>');
++    int level = 1;
++    for (--pos; pos >= 0; --pos) {
++        switch (sv.at(pos).unicode()) {
++        case '>':
++            ++level;
++            break;
++        case '<':
++            if (--level == 0)
++                return pos;
++            break;
++        default:
++            break;
++        }
++    }
++    return -1;
++}
++
++std::optional<TypeName> parseTypeName(QString t)
++{
++    TypeName result;
++    // Skip over the trailing template parameters "list<T>::iterator<V>" ->
++    // "list<T>::iterator"
++    if (t.endsWith(u'>')) {
++        const auto pos = findTemplateStart(t, t.size() - 1);
++        if (pos == -1)
++            return std::nullopt;
++        result.templateParameters = t.sliced(pos, t.size() - pos);
++        t.truncate(pos);
++    }
++
++    // Remove class template parameters "list<T>::iterator" -> "list::iterator"
++    while (true) {
++        auto specEnd = t.lastIndexOf(">::"_L1);
++        if (specEnd == -1)
++            break;
++        const auto pos = findTemplateStart(t, specEnd);
++        if (pos == -1)
++            return std::nullopt;
++        t.remove(pos, specEnd + 1 - pos);
++    }
++    result.name = t;
++    return result;
++}
++
++QDebug operator<<(QDebug debug, const TypeName &ct)
++{
++    QDebugStateSaver saver(debug);
++    debug.nospace();
++    debug.noquote();
++    debug << "ClangTypeName(name=\"" << ct.name << '"';
++    if (!ct.templateParameters.isEmpty())
++        debug << ", templateParameters=\"" << ct.templateParameters << '"';
++    debug << ')';
++    return debug;
++}
++
++} // namespace clang
+diff --git a/sources/shiboken6_generator/ApiExtractor/clangparser/clangtype.h b/sources/shiboken6_generator/ApiExtractor/clangparser/clangtype.h
+new file mode 100644
+index 000000000..0ae970648
+--- /dev/null
++++ b/sources/shiboken6_generator/ApiExtractor/clangparser/clangtype.h
+@@ -0,0 +1,28 @@
++// Copyright (C) 2026 The Qt Company Ltd.
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
++
++#ifndef CLANGTYPE_H
++#define CLANGTYPE_H
++
++#include <QtCore/qstring.h>
++
++#include <optional>
++
++QT_FORWARD_DECLARE_CLASS(QDebug)
++
++namespace clang {
++
++struct TypeName
++{
++    QString name;
++    QString templateParameters;
++};
++
++// Split a type name "std::list<int>::value_type<T>" into the canonical name
++// "std::list::value_type" and its template parameters "<T>"
++std::optional<TypeName> parseTypeName(QString t);
++
++QDebug operator<<(QDebug, const TypeName &ct);
++} // namespace clang
++
++#endif // CLANGTYPE_H
+diff --git a/sources/shiboken6_generator/ApiExtractor/clangparser/clangutils.cpp b/sources/shiboken6_generator/ApiExtractor/clangparser/clangutils.cpp
+index 384fd6815..24646db53 100644
+--- a/sources/shiboken6_generator/ApiExtractor/clangparser/clangutils.cpp
++++ b/sources/shiboken6_generator/ApiExtractor/clangparser/clangutils.cpp
+@@ -10,6 +10,8 @@
+ 
+ #include <string_view>
+ 
++using namespace Qt::StringLiterals;
++
+ bool operator==(const CXCursor &c1, const CXCursor &c2) noexcept
+ {
+     return c1.kind == c2.kind
+@@ -137,11 +139,18 @@ CXType fullyResolveType(const CXType &type)
+     return resolveTypedef(resolveElaboratedType(type));
+ }
+ 
+-QString getTypeName(const CXType &type)
++QString getTypeName(const CXType &type, [[maybe_unused]] PrintingPolicy p)
+ {
++    // Behavioral change, clang_getTypeSpelling() may no longer return the qualified name in 22.1
++#if LLVM_VERSION >= 22
++    CXString qualName = clang_getFullyQualifiedName(type, p, 0);
++    QString result = QString::fromUtf8(clang_getCString(qualName));
++    clang_disposeString(qualName);
++#else
+     CXString typeSpelling = clang_getTypeSpelling(type);
+     const QString result = QString::fromUtf8(clang_getCString(typeSpelling));
+     clang_disposeString(typeSpelling);
++#endif
+     return result;
+ }
+ 
+@@ -157,9 +166,9 @@ bool hasScopeResolution(const CXType &type)
+ }
+ 
+ // Resolve elaborated types occurring with clang 16
+-QString getResolvedTypeName(const CXType &type)
++QString getResolvedTypeName(const CXType &type, PrintingPolicy p)
+ {
+-    return getTypeName(resolveElaboratedType(type));
++    return getTypeName(resolveElaboratedType(type), p);
+ }
+ 
+ Diagnostic::Diagnostic(const QString &m, const CXCursor &c, CXDiagnosticSeverity s)
+diff --git a/sources/shiboken6_generator/ApiExtractor/clangparser/clangutils.h b/sources/shiboken6_generator/ApiExtractor/clangparser/clangutils.h
+index bb819e61f..866be9282 100644
+--- a/sources/shiboken6_generator/ApiExtractor/clangparser/clangutils.h
++++ b/sources/shiboken6_generator/ApiExtractor/clangparser/clangutils.h
+@@ -4,7 +4,8 @@
+ #ifndef CLANGUTILS_H
+ #define CLANGUTILS_H
+ 
+-#include <clang-c/Index.h>
++#include "clang_typedefs.h"
++
+ #include <QtCore/qstring.h>
+ #include <QtCore/qstringlist.h>
+ #include <QtCore/qcompare.h>
+@@ -26,14 +27,10 @@ namespace clang {
+ QString getCursorKindName(CXCursorKind cursorKind);
+ QString getCursorSpelling(const CXCursor &cursor);
+ QString getCursorDisplayName(const CXCursor &cursor);
+-QString getTypeName(const CXType &type);
++QString getTypeName(const CXType &type, PrintingPolicy p);
+ bool hasScopeResolution(const CXType &type);
+ CXType fullyResolveType(const CXType &type);
+-QString getResolvedTypeName(const CXType &type);
+-inline QString getCursorTypeName(const CXCursor &cursor)
+-    { return getTypeName(clang_getCursorType(cursor)); }
+-inline QString getCursorResultTypeName(const CXCursor &cursor)
+-    { return getTypeName(clang_getCursorResultType(cursor)); }
++QString getResolvedTypeName(const CXType &type, PrintingPolicy p);
+ 
+ inline bool isCursorValid(const CXCursor &c)
+ {
+diff --git a/sources/shiboken6_generator/ApiExtractor/clangparser/compilersupport.cpp b/sources/shiboken6_generator/ApiExtractor/clangparser/compilersupport.cpp
+index 4b15214b5..223628cd0 100644
+--- a/sources/shiboken6_generator/ApiExtractor/clangparser/compilersupport.cpp
++++ b/sources/shiboken6_generator/ApiExtractor/clangparser/compilersupport.cpp
+@@ -50,7 +50,7 @@ QVersionNumber libClangVersion()
+     return QVersionNumber(CINDEX_VERSION_MAJOR, CINDEX_VERSION_MINOR);
+ }
+ 
+-static const Triplet _hostTriplet = Triplet::fromHost();
++static const Triplet _hostTriplet = Triplet::fromHost(/* detectVersion */ false);
+ static Triplet _optionsTriplet = _hostTriplet;
+ 
+ const Triplet &optionsTriplet()
+diff --git a/sources/shiboken6_generator/ApiExtractor/clangparser/triplet.cpp b/sources/shiboken6_generator/ApiExtractor/clangparser/triplet.cpp
+index e077a6b03..ad1a74768 100644
+--- a/sources/shiboken6_generator/ApiExtractor/clangparser/triplet.cpp
++++ b/sources/shiboken6_generator/ApiExtractor/clangparser/triplet.cpp
+@@ -112,7 +112,7 @@ static Platform hostPlatform()
+ static QVersionNumber hostPlatformVersion()
+ {
+     auto ov = QOperatingSystemVersion::current();
+-    return ov.type() != QOperatingSystemVersionBase::Unknown ? ov.version() : QVersionNumber{};
++    return ov.type() != QOperatingSystemVersion::Unknown ? ov.version() : QVersionNumber{};
+ }
+ 
+ Triplet::Triplet() = default;
+@@ -314,15 +314,16 @@ std::optional<Triplet> Triplet::fromString(QStringView name)
+     return result;
+ }
+ 
+-Triplet Triplet::fromHost()
++Triplet Triplet::fromHost(bool detectVersion)
+ {
+     Triplet result;
+     result.setArchitecture(hostArchitecture());
+     result.setPlatform(hostPlatform());
+     result.setCompiler(hostCompiler());
+-    const auto hv = hostPlatformVersion();
+-    if (!hv.isNull())
+-        result.setPlatformVersion(hv);
++    if (detectVersion) {
++        if (const auto hv = hostPlatformVersion(); !hv.isNull())
++            result.setPlatformVersion(hv);
++    }
+     return result;
+ }
+ 
+diff --git a/sources/shiboken6_generator/ApiExtractor/clangparser/triplet.h b/sources/shiboken6_generator/ApiExtractor/clangparser/triplet.h
+index 509768153..3f9c8ba06 100644
+--- a/sources/shiboken6_generator/ApiExtractor/clangparser/triplet.h
++++ b/sources/shiboken6_generator/ApiExtractor/clangparser/triplet.h
+@@ -70,7 +70,7 @@ public:
+     QByteArray toByteArray() const;
+     QString toString() const { return QLatin1StringView(toByteArray()); }
+ 
+-    static Triplet fromHost();
++    static Triplet fromHost(bool detectVersion);
+     static std::optional<Triplet> fromString(QStringView name);
+ 
+ private:
+diff --git a/sources/shiboken6_generator/ApiExtractor/complextypeentry.h b/sources/shiboken6_generator/ApiExtractor/complextypeentry.h
+index 01d204ec5..778156214 100644
+--- a/sources/shiboken6_generator/ApiExtractor/complextypeentry.h
++++ b/sources/shiboken6_generator/ApiExtractor/complextypeentry.h
+@@ -120,8 +120,8 @@ public:
+     bool isGenericClass() const;
+     void setGenericClass(bool isGeneric);
+ 
+-    bool deleteInMainThread() const;
+-    void setDeleteInMainThread(bool d);
++    TypeSystem::DeletionMode deletionMode() const;
++    void setDeletionMode(TypeSystem::DeletionMode dm);
+ 
+     QString hashFunction() const;
+     void setHashFunction(const QString &hashFunction);
+diff --git a/sources/shiboken6_generator/ApiExtractor/messages.cpp b/sources/shiboken6_generator/ApiExtractor/messages.cpp
+index e619f1e83..fd04d5707 100644
+--- a/sources/shiboken6_generator/ApiExtractor/messages.cpp
++++ b/sources/shiboken6_generator/ApiExtractor/messages.cpp
+@@ -1168,3 +1168,20 @@ QString msgSynthesizedFunction(const AbstractMetaFunctionCPtr &newFunction,
+     const QString why = "from: \""_L1 + oldFunction->classQualifiedSignature() + u'"';
+     return msgSynthesizedFunction(newFunction, why);
+ }
++
++QString msgOwnerThreadForNonQObject(const AbstractMetaClassCPtr &metaClass)
++{
++    return "shiboken: delete-in-owner-thread specified for non-QObject class \""_L1
++           + metaClass->name() + u'"';
++}
++
++QString msgRejectedTypes(const QStringList &rejectedTypes)
++{
++    QString result;
++    QTextStream str(&result);
++    str << "Rejected Types (" << rejectedTypes.size() << "):\n";
++    for (const auto &rejectedType : rejectedTypes)
++        str << "  \"" << rejectedType << "\"\n";
++    str << '\n';
++    return result;
++}
+diff --git a/sources/shiboken6_generator/ApiExtractor/messages.h b/sources/shiboken6_generator/ApiExtractor/messages.h
+index db32f3828..d0680e368 100644
+--- a/sources/shiboken6_generator/ApiExtractor/messages.h
++++ b/sources/shiboken6_generator/ApiExtractor/messages.h
+@@ -297,4 +297,8 @@ QString msgSynthesizedFunction(const AbstractMetaFunctionCPtr &newFunction,
+ QString msgSynthesizedFunction(const AbstractMetaFunctionCPtr &newFunction,
+                                const FunctionModelItem &oldFunction);
+ 
++QString msgOwnerThreadForNonQObject(const AbstractMetaClassCPtr &metaClass);
++
++QString msgRejectedTypes(const QStringList &rejectedTypes);
++
+ #endif // MESSAGES_H
+diff --git a/sources/shiboken6_generator/ApiExtractor/parser/codemodel.cpp b/sources/shiboken6_generator/ApiExtractor/parser/codemodel.cpp
+index bfccacbac..afa28fee5 100644
+--- a/sources/shiboken6_generator/ApiExtractor/parser/codemodel.cpp
++++ b/sources/shiboken6_generator/ApiExtractor/parser/codemodel.cpp
+@@ -28,27 +28,6 @@ static std::shared_ptr<T> findModelItem(const QList<std::shared_ptr<T> > &list,
+ 
+ // ---------------------------------------------------------------------------
+ 
+-CodeModel::CodeModel() : m_globalNamespace(new _NamespaceModelItem(this))
+-{
+-}
+-
+-CodeModel::~CodeModel() = default;
+-
+-NamespaceModelItem CodeModel::globalNamespace() const
+-{
+-    return m_globalNamespace;
+-}
+-
+-void CodeModel::addFile(const FileModelItem &item)
+-{
+-    m_files.append(item);
+-}
+-
+-FileModelItem CodeModel::findFile(QAnyStringView name) const
+-{
+-    return findModelItem(m_files, name);
+-}
+-
+ static CodeModelItem findRecursion(const ScopeModelItem &scope,
+                                    const QStringList &qualifiedName, int segment = 0)
+ {
+@@ -102,44 +81,14 @@ QDebug operator<<(QDebug d, Access a)
+     }
+     return d;
+ }
+-
+-QDebug operator<<(QDebug d, const CodeModel *m)
+-{
+-    QDebugStateSaver s(d);
+-    d.noquote();
+-    d.nospace();
+-    d << "CodeModel(";
+-    if (m) {
+-        const NamespaceModelItem globalNamespaceP = m->globalNamespace();
+-        if (globalNamespaceP)
+-            globalNamespaceP->formatDebug(d);
+-    } else {
+-        d << '0';
+-    }
+-    d << ')';
+-    return d;
+-}
+ #endif // !QT_NO_DEBUG_STREAM
+ 
+ // ---------------------------------------------------------------------------
+-_CodeModelItem::_CodeModelItem(CodeModel *model, int kind)
+-        : m_model(model),
+-        m_kind(kind),
+-        m_startLine(0),
+-        m_startColumn(0),
+-        m_endLine(0),
+-        m_endColumn(0)
++_CodeModelItem::_CodeModelItem(Kind kind) : m_kind(kind)
+ {
+ }
+ 
+-_CodeModelItem::_CodeModelItem(CodeModel *model, const QString &name, int kind)
+-    : m_model(model),
+-    m_kind(kind),
+-    m_startLine(0),
+-    m_startColumn(0),
+-    m_endLine(0),
+-    m_endColumn(0),
+-    m_name(name)
++_CodeModelItem::_CodeModelItem(const QString &name, Kind kind) : m_name(name), m_kind(kind)
+ {
+ }
+ 
+@@ -195,11 +144,6 @@ void _CodeModelItem::setFileName(const QString &fileName)
+     m_fileName = fileName;
+ }
+ 
+-FileModelItem _CodeModelItem::file() const
+-{
+-    return model()->findFile(fileName());
+-}
+-
+ void _CodeModelItem::getStartPosition(int *line, int *column) const
+ {
+     *line = m_startLine;
+@@ -239,16 +183,6 @@ void _CodeModelItem::setEnclosingScope(const _ScopeModelItem *s)
+     m_enclosingScope = s;
+ }
+ 
+-_ScopeModelItem::_ScopeModelItem(CodeModel *model, int kind)
+-    : _CodeModelItem(model, kind)
+-{
+-}
+-
+-_ScopeModelItem::_ScopeModelItem(CodeModel *model, const QString &name, int kind)
+-    : _CodeModelItem(model, name, kind)
+-{
+-}
+-
+ #ifndef QT_NO_DEBUG_STREAM
+ void _CodeModelItem::formatKind(QDebug &d, int k)
+ {
+@@ -345,9 +279,9 @@ TemplateParameterList _ClassModelItem::templateParameters() const
+     return m_templateParameters;
+ }
+ 
+-void _ClassModelItem::setTemplateParameters(const TemplateParameterList &templateParameters)
++void _ClassModelItem::addTemplateParameter(const TemplateParameterModelItem &templateParameter)
+ {
+-    m_templateParameters = templateParameters;
++    m_templateParameters.append(templateParameter);
+ }
+ 
+ bool _ClassModelItem::extendsClass(const QString &name) const
+@@ -358,13 +292,11 @@ bool _ClassModelItem::extendsClass(const QString &name) const
+                        });
+ }
+ 
+-_ClassModelItem::_ClassModelItem(CodeModel *model, int kind)
+-    : _ScopeModelItem(model, kind)
++_ClassModelItem::_ClassModelItem() : _ScopeModelItem(_CodeModelItem::Kind_Class)
+ {
+ }
+ 
+-_ClassModelItem::_ClassModelItem(CodeModel *model, const QString &name, int kind)
+-    : _ScopeModelItem(model, name, kind)
++_ClassModelItem::_ClassModelItem(const QString &name) : _ScopeModelItem(name, _CodeModelItem::Kind_Class)
+ {
+ }
+ 
+@@ -754,13 +686,16 @@ FunctionList _ScopeModelItem::findFunctions(QAnyStringView name) const
+ }
+ 
+ // ---------------------------------------------------------------------------
+-_NamespaceModelItem::_NamespaceModelItem(CodeModel *model, int kind)
+-    : _ScopeModelItem(model, kind)
++_NamespaceModelItem::_NamespaceModelItem() : _ScopeModelItem(_CodeModelItem::Kind_Namespace)
++{
++}
++
++_NamespaceModelItem::_NamespaceModelItem(const QString &name) :
++    _ScopeModelItem(name, _CodeModelItem::Kind_Namespace)
+ {
+ }
+ 
+-_NamespaceModelItem::_NamespaceModelItem(CodeModel *model, const QString &name, int kind)
+-    : _ScopeModelItem(model, name, kind)
++_NamespaceModelItem::_NamespaceModelItem(Kind kind) : _ScopeModelItem(kind)
+ {
+ }
+ 
+@@ -777,6 +712,10 @@ NamespaceModelItem _NamespaceModelItem::findNamespace(QAnyStringView name) const
+     return findModelItem(m_namespaces, name);
+ }
+ 
++_FileModelItem::_FileModelItem() : _NamespaceModelItem(_CodeModelItem::Kind_File)
++{
++}
++
+ _FileModelItem::~_FileModelItem() = default;
+ 
+ void  _NamespaceModelItem::appendNamespace(const _NamespaceModelItem &other)
+@@ -804,13 +743,12 @@ void _NamespaceModelItem::formatDebug(QDebug &d) const
+ #endif // !QT_NO_DEBUG_STREAM
+ 
+ // ---------------------------------------------------------------------------
+-_ArgumentModelItem::_ArgumentModelItem(CodeModel *model, int kind)
+-    : _CodeModelItem(model, kind)
++_ArgumentModelItem::_ArgumentModelItem() : _CodeModelItem(_CodeModelItem::Kind_Argument)
+ {
+ }
+ 
+-_ArgumentModelItem::_ArgumentModelItem(CodeModel *model, const QString &name, int kind)
+-    : _CodeModelItem(model, name, kind)
++_ArgumentModelItem::_ArgumentModelItem(const QString &name)
++     : _CodeModelItem(name, _CodeModelItem::Kind_Argument)
+ {
+ }
+ 
+@@ -894,13 +832,13 @@ bool _FunctionModelItem::isSimilar(const FunctionModelItem &other) const
+     return true;
+ }
+ 
+-_FunctionModelItem::_FunctionModelItem(CodeModel *model, int kind)
+-    : _MemberModelItem(model, kind), m_flags(0)
++_FunctionModelItem::_FunctionModelItem()
++    : _MemberModelItem(_CodeModelItem::Kind_Function), m_flags(0)
+ {
+ }
+ 
+-_FunctionModelItem::_FunctionModelItem(CodeModel *model, const QString &name, int kind)
+-    : _MemberModelItem(model, name, kind), m_flags(0)
++_FunctionModelItem::_FunctionModelItem(const QString &name)
++    : _MemberModelItem(name, _CodeModelItem::Kind_Function), m_flags(0)
+ {
+ }
+ 
+@@ -1054,7 +992,8 @@ QString _FunctionModelItem::classQualifiedSignature() const
+     QTextStream str(&result);
+     if (m_attributes.testFlag(FunctionAttribute::Virtual))
+         str << "virtual ";
+-    str << type().toString() << ' ';
++    if (m_functionType != CodeModel::FunctionType::Constructor)
++        str << type().toString() << ' ';
+     const auto &scopeList = scope();
+     for (const auto &scope : scopeList)
+         str << scope << "::";
+@@ -1257,17 +1196,29 @@ void _FunctionModelItem::formatDebug(QDebug &d) const
+ }
+ #endif // !QT_NO_DEBUG_STREAM
+ 
++_VariableModelItem::_VariableModelItem() : _MemberModelItem(_CodeModelItem::Kind_Variable)
++{
++}
++
++_VariableModelItem::_VariableModelItem(const QString &name)
++     : _MemberModelItem(name, _CodeModelItem::Kind_Variable)
++{
++}
++
++_VariableModelItem::~_VariableModelItem() = default;
++
+ // ---------------------------------------------------------------------------
+-_TypeDefModelItem::_TypeDefModelItem(CodeModel *model, int kind)
+-    : _CodeModelItem(model, kind)
++_TypeDefModelItem::_TypeDefModelItem() : _CodeModelItem(_CodeModelItem::Kind_TypeDef)
+ {
+ }
+ 
+-_TypeDefModelItem::_TypeDefModelItem(CodeModel *model, const QString &name, int kind)
+-    : _CodeModelItem(model, name, kind)
++_TypeDefModelItem::_TypeDefModelItem(const QString &name)
++    : _CodeModelItem(name, _CodeModelItem::Kind_TypeDef)
+ {
+ }
+ 
++_TypeDefModelItem::~_TypeDefModelItem() = default;
++
+ TypeInfo _TypeDefModelItem::type() const
+ {
+     return m_type;
+@@ -1303,11 +1254,17 @@ void _TypeDefModelItem::formatDebug(QDebug &d) const
+ 
+ // ---------------------------------------------------------------------------
+ 
+-_TemplateTypeAliasModelItem::_TemplateTypeAliasModelItem(CodeModel *model, int kind)
+-    : _CodeModelItem(model, kind) {}
++_TemplateTypeAliasModelItem::_TemplateTypeAliasModelItem()
++    : _CodeModelItem(_CodeModelItem::Kind_TemplateTypeAlias)
++{
++}
+ 
+-_TemplateTypeAliasModelItem::_TemplateTypeAliasModelItem(CodeModel *model, const QString &name, int kind)
+-    : _CodeModelItem(model, name, kind) {}
++_TemplateTypeAliasModelItem::_TemplateTypeAliasModelItem(const QString &name)
++    : _CodeModelItem(name, _CodeModelItem::Kind_TemplateTypeAlias)
++{
++}
++
++_TemplateTypeAliasModelItem::~_TemplateTypeAliasModelItem() = default;
+ 
+ TemplateParameterList _TemplateTypeAliasModelItem::templateParameters() const
+ {
+@@ -1344,13 +1301,12 @@ void _TemplateTypeAliasModelItem::formatDebug(QDebug &d) const
+ #endif // !QT_NO_DEBUG_STREAM
+ 
+ // ---------------------------------------------------------------------------
+-_EnumModelItem::_EnumModelItem(CodeModel *model, const QString &name, int kind)
+-    : _CodeModelItem(model, name, kind)
++_EnumModelItem::_EnumModelItem(const QString &name)
++    : _CodeModelItem(name, _CodeModelItem::Kind_Enum)
+ {
+ }
+ 
+-_EnumModelItem::_EnumModelItem(CodeModel *model, int kind)
+-    : _CodeModelItem(model, kind)
++_EnumModelItem::_EnumModelItem() : _CodeModelItem(_CodeModelItem::Kind_Enum)
+ {
+ }
+ 
+@@ -1440,13 +1396,13 @@ void _EnumModelItem::formatDebug(QDebug &d) const
+ // ---------------------------------------------------------------------------
+ _EnumeratorModelItem::~_EnumeratorModelItem() = default;
+ 
+-_EnumeratorModelItem::_EnumeratorModelItem(CodeModel *model, int kind)
+-    : _CodeModelItem(model, kind)
++_EnumeratorModelItem::_EnumeratorModelItem()
++    : _CodeModelItem(_CodeModelItem::Kind_Enumerator)
+ {
+ }
+ 
+-_EnumeratorModelItem::_EnumeratorModelItem(CodeModel *model, const QString &name, int kind)
+-    : _CodeModelItem(model, name, kind)
++_EnumeratorModelItem::_EnumeratorModelItem(const QString &name)
++    : _CodeModelItem(name, _CodeModelItem::Kind_Enumerator)
+ {
+ }
+ 
+@@ -1483,14 +1439,13 @@ void _EnumeratorModelItem::formatDebug(QDebug &d) const
+ // ---------------------------------------------------------------------------
+ _TemplateParameterModelItem::~_TemplateParameterModelItem() = default;
+ 
+-_TemplateParameterModelItem::_TemplateParameterModelItem(CodeModel *model, int kind)
+-    : _CodeModelItem(model, kind)
++_TemplateParameterModelItem::_TemplateParameterModelItem()
++    : _CodeModelItem(_CodeModelItem::Kind_TemplateParameter)
+ {
+ }
+ 
+-_TemplateParameterModelItem::_TemplateParameterModelItem(CodeModel *model,
+-                                                         const QString &name, int kind)
+-    : _CodeModelItem(model, name, kind)
++_TemplateParameterModelItem::_TemplateParameterModelItem(const QString &name)
++    : _CodeModelItem(name, _CodeModelItem::Kind_TemplateParameter)
+ {
+ }
+ 
+@@ -1547,6 +1502,11 @@ void _MemberModelItem::setAccessPolicy(Access accessPolicy)
+     m_accessPolicy = accessPolicy;
+ }
+ 
++void _MemberModelItem::addTemplateParameter(const TemplateParameterModelItem &templateParameter)
++{
++    m_templateParameters.append(templateParameter);
++}
++
+ bool _MemberModelItem::isStatic() const
+ {
+     return m_isStatic;
+@@ -1557,13 +1517,13 @@ void _MemberModelItem::setStatic(bool isStatic)
+     m_isStatic = isStatic;
+ }
+ 
+-_MemberModelItem::_MemberModelItem(CodeModel *model, int kind)
+-    : _CodeModelItem(model, kind), m_flags(0)
++_MemberModelItem::_MemberModelItem(Kind kind)
++    : _CodeModelItem(kind), m_flags(0)
+ {
+ }
+ 
+-_MemberModelItem::_MemberModelItem(CodeModel *model, const QString &name, int kind)
+-    : _CodeModelItem(model, name, kind), m_flags(0)
++_MemberModelItem::_MemberModelItem(const QString &name, Kind kind)
++    : _CodeModelItem(name, kind), m_flags(0)
+ {
+ }
+ 
+diff --git a/sources/shiboken6_generator/ApiExtractor/parser/codemodel.h b/sources/shiboken6_generator/ApiExtractor/parser/codemodel.h
+index 7ff0a88e2..1641ad8f2 100644
+--- a/sources/shiboken6_generator/ApiExtractor/parser/codemodel.h
++++ b/sources/shiboken6_generator/ApiExtractor/parser/codemodel.h
+@@ -22,9 +22,6 @@
+ 
+ QT_FORWARD_DECLARE_CLASS(QDebug)
+ 
+-#define DECLARE_MODEL_NODE(k) \
+-    enum { __node_kind = Kind_##k };
+-
+ class SourceLocation;
+ 
+ class CodeModel
+@@ -67,26 +64,14 @@ public:
+     };
+     Q_ENUM(ClassType)
+ 
+-    CodeModel();
+-    virtual ~CodeModel();
+-
+-    FileList files() const { return m_files; }
+-    NamespaceModelItem globalNamespace() const;
+-
+-    void addFile(const FileModelItem &item);
+-    FileModelItem findFile(QAnyStringView name) const;
++    CodeModel() = delete;
+ 
+     static CodeModelItem findItem(const QStringList &qualifiedName,
+                                   const ScopeModelItem &scope);
+-
+-private:
+-    FileList m_files;
+-    NamespaceModelItem m_globalNamespace;
+ };
+ 
+ #ifndef QT_NO_DEBUG_STREAM
+ QDebug operator<<(QDebug d, Access a);
+-QDebug operator<<(QDebug d, const CodeModel *m);
+ #endif
+ 
+ class _CodeModelItem
+@@ -131,8 +116,6 @@ public:
+     QString fileName() const;
+     void setFileName(const QString &fileName);
+ 
+-    FileModelItem file() const;
+-
+     void getStartPosition(int *line, int *column) const;
+     int startLine() const { return m_startLine; }
+     void setStartPosition(int line, int column);
+@@ -142,8 +125,6 @@ public:
+ 
+     SourceLocation sourceLocation() const;
+ 
+-    inline CodeModel *model() const { return m_model; }
+-
+     const _ScopeModelItem *enclosingScope() const;
+     void setEnclosingScope(const _ScopeModelItem *s);
+ 
+@@ -153,20 +134,19 @@ public:
+ #endif
+ 
+ protected:
+-    explicit _CodeModelItem(CodeModel *model, int kind);
+-    explicit _CodeModelItem(CodeModel *model, const QString &name, int kind);
++    explicit _CodeModelItem(Kind kind);
++    explicit _CodeModelItem(const QString &name, Kind kind);
+ 
+ private:
+-    CodeModel *m_model;
+     const _ScopeModelItem *m_enclosingScope = nullptr;
+-    int m_kind;
+-    int m_startLine;
+-    int m_startColumn;
+-    int m_endLine;
+-    int m_endColumn;
+     QString m_name;
+     QString m_fileName;
+     QStringList m_scope;
++    int m_startLine = 0;
++    int m_startColumn = 0;
++    int m_endLine = 0;
++    int m_endColumn = 0;
++    Kind m_kind;
+ };
+ 
+ #ifndef QT_NO_DEBUG_STREAM
+@@ -177,7 +157,6 @@ class _ScopeModelItem: public _CodeModelItem
+ {
+ public:
+     Q_DISABLE_COPY_MOVE(_ScopeModelItem)
+-    DECLARE_MODEL_NODE(Scope)
+ 
+     ~_ScopeModelItem() override;
+ 
+@@ -222,9 +201,7 @@ public:
+ #endif
+ 
+ protected:
+-    explicit _ScopeModelItem(CodeModel *model, int kind = __node_kind);
+-    explicit _ScopeModelItem(CodeModel *model, const QString &name,
+-                             int kind = __node_kind);
++    using _CodeModelItem::_CodeModelItem;
+ 
+     void appendScope(const _ScopeModelItem &other);
+ 
+@@ -254,7 +231,6 @@ class _ClassModelItem: public _ScopeModelItem
+ {
+ public:
+     Q_DISABLE_COPY_MOVE(_ClassModelItem)
+-    DECLARE_MODEL_NODE(Class)
+ 
+     struct BaseClass
+     {
+@@ -270,9 +246,8 @@ public:
+         Access access = Access::Public;
+     };
+ 
+-    explicit _ClassModelItem(CodeModel *model, int kind = __node_kind);
+-    explicit _ClassModelItem(CodeModel *model, const QString &name,
+-                             int kind = __node_kind);
++    _ClassModelItem();
++    explicit _ClassModelItem(const QString &name);
+     ~_ClassModelItem() override;
+ 
+     const QList<BaseClass> &baseClasses() const { return m_baseClasses; }
+@@ -284,7 +259,7 @@ public:
+     void addBaseClass(const BaseClass &b) { m_baseClasses.append(b); }
+ 
+     TemplateParameterList templateParameters() const;
+-    void setTemplateParameters(const TemplateParameterList &templateParameters);
++    void addTemplateParameter(const TemplateParameterModelItem &templateParameter);
+ 
+     bool extendsClass(const QString &name) const;
+ 
+@@ -318,11 +293,9 @@ class _NamespaceModelItem: public _ScopeModelItem
+ {
+ public:
+     Q_DISABLE_COPY_MOVE(_NamespaceModelItem)
+-    DECLARE_MODEL_NODE(Namespace)
+ 
+-    explicit _NamespaceModelItem(CodeModel *model, int kind = __node_kind);
+-    explicit _NamespaceModelItem(CodeModel *model, const QString &name,
+-                                 int kind = __node_kind);
++    _NamespaceModelItem();
++    explicit _NamespaceModelItem(const QString &name);
+     ~_NamespaceModelItem() override;
+ 
+     const NamespaceList &namespaces() const { return m_namespaces; }
+@@ -340,6 +313,9 @@ public:
+     void formatDebug(QDebug &d) const override;
+ #endif
+ 
++protected:
++    explicit _NamespaceModelItem(Kind kind);
++
+ private:
+     NamespaceList m_namespaces;
+     NamespaceType m_type = NamespaceType::Default;
+@@ -349,10 +325,8 @@ class _FileModelItem: public _NamespaceModelItem
+ {
+ public:
+     Q_DISABLE_COPY_MOVE(_FileModelItem)
+-    DECLARE_MODEL_NODE(File)
+-
+-    using _NamespaceModelItem::_NamespaceModelItem;
+ 
++    _FileModelItem();
+     ~_FileModelItem() override;
+ };
+ 
+@@ -360,11 +334,9 @@ class _ArgumentModelItem: public _CodeModelItem
+ {
+ public:
+     Q_DISABLE_COPY_MOVE(_ArgumentModelItem)
+-    DECLARE_MODEL_NODE(Argument)
+ 
+-    explicit _ArgumentModelItem(CodeModel *model, int kind = __node_kind);
+-    explicit _ArgumentModelItem(CodeModel *model, const QString &name,
+-                                int kind = __node_kind);
++    _ArgumentModelItem();
++    explicit _ArgumentModelItem(const QString &name);
+     ~_ArgumentModelItem() override;
+ 
+     TypeInfo type() const;
+@@ -397,11 +369,7 @@ class _MemberModelItem: public _CodeModelItem
+ {
+ public:
+     Q_DISABLE_COPY_MOVE(_MemberModelItem)
+-    DECLARE_MODEL_NODE(Member)
+ 
+-    explicit _MemberModelItem(CodeModel *model, int kind = __node_kind);
+-    explicit _MemberModelItem(CodeModel *model, const QString &name,
+-                              int kind = __node_kind);
+     ~_MemberModelItem() override;
+ 
+     bool isConstant() const;
+@@ -432,7 +400,7 @@ public:
+     void setAccessPolicy(Access accessPolicy);
+ 
+     TemplateParameterList templateParameters() const { return m_templateParameters; }
+-    void setTemplateParameters(const TemplateParameterList &templateParameters) { m_templateParameters = templateParameters; }
++    void addTemplateParameter(const TemplateParameterModelItem &templateParameter);
+ 
+     TypeInfo type() const;
+     void setType(const TypeInfo &type);
+@@ -441,6 +409,10 @@ public:
+     void formatDebug(QDebug &d) const override;
+ #endif
+ 
++protected:
++    explicit _MemberModelItem(Kind kind);
++    explicit _MemberModelItem(const QString &name, Kind kind);
++
+ private:
+     TemplateParameterList m_templateParameters;
+     TypeInfo m_type;
+@@ -465,12 +437,10 @@ class _FunctionModelItem: public _MemberModelItem
+ {
+ public:
+     Q_DISABLE_COPY_MOVE(_FunctionModelItem)
+-    DECLARE_MODEL_NODE(Function)
+ 
+-    explicit _FunctionModelItem(CodeModel *model, int kind = __node_kind);
+-    explicit _FunctionModelItem(CodeModel *model, const QString &name,
+-                                int kind = __node_kind);
+-    ~_FunctionModelItem();
++    _FunctionModelItem();
++    explicit _FunctionModelItem(const QString &name);
++    ~_FunctionModelItem() override;
+ 
+     ArgumentList arguments() const;
+ 
+@@ -551,19 +521,21 @@ private:
+ class _VariableModelItem: public _MemberModelItem
+ {
+ public:
+-    DECLARE_MODEL_NODE(Variable)
++    Q_DISABLE_COPY_MOVE(_VariableModelItem)
+ 
+-    using _MemberModelItem::_MemberModelItem;
++    _VariableModelItem();
++    explicit _VariableModelItem(const QString &name);
++    ~_VariableModelItem() override;
+ };
+ 
+ class _TypeDefModelItem: public _CodeModelItem
+ {
+ public:
+-    DECLARE_MODEL_NODE(TypeDef)
++    Q_DISABLE_COPY_MOVE(_TypeDefModelItem)
+ 
+-    explicit _TypeDefModelItem(CodeModel *model, int kind = __node_kind);
+-    explicit _TypeDefModelItem(CodeModel *model, const QString &name,
+-                               int kind = __node_kind);
++    _TypeDefModelItem();
++    explicit _TypeDefModelItem(const QString &name);
++    ~_TypeDefModelItem() override;
+ 
+     TypeInfo type() const;
+     void setType(const TypeInfo &type);
+@@ -578,18 +550,18 @@ public:
+ #endif
+ 
+ private:
+-    Access m_accessPolicy = Access::Public;
+     TypeInfo m_type;
++    Access m_accessPolicy = Access::Public;
+ };
+ 
+ class _TemplateTypeAliasModelItem : public _CodeModelItem
+ {
+ public:
+-    DECLARE_MODEL_NODE(TemplateTypeAlias)
++    Q_DISABLE_COPY_MOVE(_TemplateTypeAliasModelItem)
+ 
+-    explicit _TemplateTypeAliasModelItem(CodeModel *model, int kind = __node_kind);
+-    explicit _TemplateTypeAliasModelItem(CodeModel *model, const QString &name,
+-                                         int kind = __node_kind);
++    _TemplateTypeAliasModelItem();
++    explicit _TemplateTypeAliasModelItem(const QString &name);
++    ~_TemplateTypeAliasModelItem() override;
+ 
+     TemplateParameterList templateParameters() const;
+     void addTemplateParameter(const TemplateParameterModelItem &templateParameter);
+@@ -610,10 +582,9 @@ class _EnumModelItem: public _CodeModelItem
+ {
+ public:
+     Q_DISABLE_COPY_MOVE(_EnumModelItem)
+-    DECLARE_MODEL_NODE(Enum)
+ 
+-    explicit _EnumModelItem(CodeModel *model, const QString &name, int kind = __node_kind);
+-    explicit _EnumModelItem(CodeModel *model, int kind = __node_kind);
++    explicit _EnumModelItem(const QString &name);
++    _EnumModelItem();
+     ~_EnumModelItem() override;
+ 
+     Access accessPolicy() const;
+@@ -643,9 +614,9 @@ public:
+ 
+ private:
+     QString m_underlyingType;
+-    Access m_accessPolicy = Access::Public;
+     EnumeratorList m_enumerators;
+     EnumKind m_enumKind = CEnum;
++    Access m_accessPolicy = Access::Public;
+     bool m_deprecated = false;
+     bool m_signed = true;
+ };
+@@ -654,11 +625,9 @@ class _EnumeratorModelItem: public _CodeModelItem
+ {
+ public:
+     Q_DISABLE_COPY_MOVE(_EnumeratorModelItem)
+-    DECLARE_MODEL_NODE(Enumerator)
+ 
+-    explicit _EnumeratorModelItem(CodeModel *model, int kind = __node_kind);
+-    explicit _EnumeratorModelItem(CodeModel *model, const QString &name,
+-                                  int kind = __node_kind);
++    _EnumeratorModelItem();
++    explicit _EnumeratorModelItem(const QString &name);
+     ~_EnumeratorModelItem() override;
+ 
+     QString stringValue() const;
+@@ -684,11 +653,9 @@ class _TemplateParameterModelItem: public _CodeModelItem
+ {
+ public:
+     Q_DISABLE_COPY_MOVE(_TemplateParameterModelItem)
+-    DECLARE_MODEL_NODE(TemplateParameter)
+ 
+-    explicit _TemplateParameterModelItem(CodeModel *model, int kind = __node_kind);
+-    explicit _TemplateParameterModelItem(CodeModel *model, const QString &name,
+-                                         int kind = __node_kind);
++    _TemplateParameterModelItem();
++    explicit _TemplateParameterModelItem(const QString &name);
+     ~_TemplateParameterModelItem() override;
+ 
+     TypeInfo type() const;
+diff --git a/sources/shiboken6_generator/ApiExtractor/parser/codemodel_enums.h b/sources/shiboken6_generator/ApiExtractor/parser/codemodel_enums.h
+index 272140ae3..ae49b0e7c 100644
+--- a/sources/shiboken6_generator/ApiExtractor/parser/codemodel_enums.h
++++ b/sources/shiboken6_generator/ApiExtractor/parser/codemodel_enums.h
+@@ -59,13 +59,14 @@ enum class FunctionAttribute : std::uint8_t {
+ Q_DECLARE_FLAGS(FunctionAttributes, FunctionAttribute)
+ Q_DECLARE_OPERATORS_FOR_FLAGS(FunctionAttributes)
+ 
+-// C++ type category for TypeInfo, reflecting clang's CXTypeKind
++// C++ type category for TypeInfo, roughly reflecting clang's CXTypeKind
+ enum class TypeCategory : unsigned char {
+     Other,
+     Builtin,
+     Enum,
+     Pointer,
+     Function,
++    FunctionPointer, // not present in clang
+     Void
+ };
+ 
+diff --git a/sources/shiboken6_generator/ApiExtractor/parser/typeinfo.cpp b/sources/shiboken6_generator/ApiExtractor/parser/typeinfo.cpp
+index c530cafea..7bd0223db 100644
+--- a/sources/shiboken6_generator/ApiExtractor/parser/typeinfo.cpp
++++ b/sources/shiboken6_generator/ApiExtractor/parser/typeinfo.cpp
+@@ -41,8 +41,7 @@ public:
+         struct {
+             uint m_constant: 1;
+             uint m_volatile: 1;
+-            uint m_functionPointer: 1;
+-            uint m_padding: 29;
++            uint m_padding: 30;
+         };
+     };
+ 
+@@ -223,13 +222,7 @@ void TypeInfo::addIndirection(Indirection i)
+ 
+ bool TypeInfo::isFunctionPointer() const
+ {
+-    return d->m_functionPointer;
+-}
+-
+-void TypeInfo::setFunctionPointer(bool is)
+-{
+-    if (d->m_functionPointer != is)
+-        d->m_functionPointer = is;
++    return d->m_category == TypeCategory::FunctionPointer;
+ }
+ 
+ const QStringList &TypeInfo::arrayElements() const
+@@ -426,8 +419,11 @@ QString TypeInfo::toString() const
+         break;
+     }
+ 
+-    if (isFunctionPointer()) {
+-        tmp += u" (*)("_s;
++    if (d->m_category == TypeCategory::Function || d->m_category == TypeCategory::FunctionPointer) {
++        tmp += u' ';
++        if (d->m_category == TypeCategory::FunctionPointer)
++            tmp += "(*)"_L1;
++        tmp += u'(';
+         for (qsizetype i = 0; i < d->m_arguments.size(); ++i) {
+             if (i != 0)
+                 tmp += u", "_s;
+@@ -461,7 +457,7 @@ bool TypeInfoData::equals(const TypeInfoData &other) const
+     return flags == other.flags
+            && m_qualifiedName == other.m_qualifiedName
+            && m_category == other.m_category
+-           && (!m_functionPointer || m_arguments == other.m_arguments)
++           && m_arguments == other.m_arguments
+            && m_instantiations == other.m_instantiations;
+ }
+ 
+@@ -602,8 +598,14 @@ void TypeInfo::formatDebug(QDebug &debug) const
+         debug << ", [pointer]";
+         break;
+     case TypeCategory::Function:
+-        debug << ", [function";
++        debug << ", [function]";
++        break;
++    case TypeCategory::FunctionPointer:
++        debug << ", [function-ptr]";
+         break;
++    default:
++        break;
++
+     }
+     if (!d->m_indirections.isEmpty()) {
+         debug << ", indirections=";
+@@ -625,8 +627,12 @@ void TypeInfo::formatDebug(QDebug &debug) const
+         formatSequence(debug, d->m_instantiations.begin(), d->m_instantiations.end());
+         debug << '>';
+     }
+-    if (d->m_functionPointer) {
+-        debug << ", function ptr(";
++
++    if (d->m_category == TypeCategory::Function || d->m_category == TypeCategory::FunctionPointer) {
++        debug << ", function";
++        if (d->m_category == TypeCategory::FunctionPointer)
++            debug << "_ptr";
++        debug << '(';
+         formatSequence(debug, d->m_arguments.begin(), d->m_arguments.end());
+         debug << ')';
+     }
+diff --git a/sources/shiboken6_generator/ApiExtractor/parser/typeinfo.h b/sources/shiboken6_generator/ApiExtractor/parser/typeinfo.h
+index 092fbb724..43c9947d9 100644
+--- a/sources/shiboken6_generator/ApiExtractor/parser/typeinfo.h
++++ b/sources/shiboken6_generator/ApiExtractor/parser/typeinfo.h
+@@ -71,7 +71,6 @@ public:
+     void setIndirections(int indirections);
+ 
+     bool isFunctionPointer() const;
+-    void setFunctionPointer(bool is);
+ 
+     const QStringList &arrayElements() const;
+     void setArrayElements(const QStringList &arrayElements);
+diff --git a/sources/shiboken6_generator/ApiExtractor/typesystem.cpp b/sources/shiboken6_generator/ApiExtractor/typesystem.cpp
+index c48fc3ac6..dfb8fde0a 100644
+--- a/sources/shiboken6_generator/ApiExtractor/typesystem.cpp
++++ b/sources/shiboken6_generator/ApiExtractor/typesystem.cpp
+@@ -1511,8 +1511,7 @@ public:
+         ConfigurableTypeEntryPrivate(entryName, t, vr, parent),
+         m_qualifiedCppName(buildName(entryName, parent)),
+         m_polymorphicBase(false),
+-        m_genericClass(false),
+-        m_deleteInMainThread(false)
++        m_genericClass(false)
+     {
+     }
+ 
+@@ -1530,9 +1529,10 @@ public:
+     QString m_qualifiedCppName;
+     QString m_docFile;
+ 
++    TypeSystem::DeletionMode m_deletionMode = TypeSystem::DeletionMode::Default;
++
+     uint m_polymorphicBase : 1;
+     uint m_genericClass : 1;
+-    uint m_deleteInMainThread : 1;
+ 
+     QString m_polymorphicIdValue;
+     QString m_polymorphicNameFunction;
+@@ -1832,16 +1832,16 @@ void ComplexTypeEntry::setGenericClass(bool isGeneric)
+     d->m_genericClass = isGeneric;
+ }
+ 
+-bool ComplexTypeEntry::deleteInMainThread() const
++TypeSystem::DeletionMode ComplexTypeEntry::deletionMode() const
+ {
+     S_D(const ComplexTypeEntry);
+-    return d->m_deleteInMainThread;
++    return d->m_deletionMode;
+ }
+ 
+-void ComplexTypeEntry::setDeleteInMainThread(bool dmt)
++void ComplexTypeEntry::setDeletionMode(TypeSystem::DeletionMode dm)
+ {
+     S_D(ComplexTypeEntry);
+-    d->m_deleteInMainThread = dmt;
++    d->m_deletionMode = dm;
+ }
+ 
+ QString ComplexTypeEntry::hashFunction() const
+@@ -2715,7 +2715,8 @@ void ComplexTypeEntry::formatDebug(QDebug &debug) const
+     TypeEntry::formatDebug(debug);
+     FORMAT_BOOL("polymorphicBase", d->m_polymorphicBase)
+     FORMAT_BOOL("genericClass", d->m_genericClass)
+-    FORMAT_BOOL("deleteInMainThread", d->m_deleteInMainThread)
++    if (d->m_deletionMode != TypeSystem::DeletionMode::Default)
++        debug << ", deletionMode=" << unsigned(d->m_deletionMode);
+     if (d->m_typeFlags != 0)
+         debug << ", typeFlags=" << d->m_typeFlags;
+     debug << ", except=" << int(d->m_exceptionHandling)
+diff --git a/sources/shiboken6_generator/ApiExtractor/typesystem_enums.h b/sources/shiboken6_generator/ApiExtractor/typesystem_enums.h
+index 4237e1593..94590d47e 100644
+--- a/sources/shiboken6_generator/ApiExtractor/typesystem_enums.h
++++ b/sources/shiboken6_generator/ApiExtractor/typesystem_enums.h
+@@ -42,6 +42,12 @@ enum CodeSnipPosition : std::uint8_t {
+     CodeSnipPositionAny
+ };
+ 
++enum class DeletionMode : std::uint8_t {
++    Default,
++    DeleteInMainThread, // libshiboken
++    DeleteInQObjectOwnerThread, // libpyside for QObjects
++};
++
+ enum DocModificationMode : std::uint8_t {
+     DocModificationAppend,
+     DocModificationPrepend,
+diff --git a/sources/shiboken6_generator/ApiExtractor/typesystemparser.cpp b/sources/shiboken6_generator/ApiExtractor/typesystemparser.cpp
+index 96b5e84a1..aab0c50a3 100644
+--- a/sources/shiboken6_generator/ApiExtractor/typesystemparser.cpp
++++ b/sources/shiboken6_generator/ApiExtractor/typesystemparser.cpp
+@@ -62,6 +62,7 @@ constexpr auto sinceAttribute = "since"_L1;
+ constexpr auto untilAttribute = "until"_L1;
+ constexpr auto defaultSuperclassAttribute = "default-superclass"_L1;
+ constexpr auto deleteInMainThreadAttribute = "delete-in-main-thread"_L1;
++constexpr auto deleteInOwnerThreadAttribute = "delete-in-owner-thread"_L1;
+ constexpr auto deprecatedAttribute = "deprecated"_L1;
+ constexpr auto disableWrapperAttribute = "disable-wrapper"_L1;
+ constexpr auto docFileAttribute = "doc-file"_L1;
+@@ -1929,7 +1930,10 @@ bool TypeSystemParser::applyComplexTypeAttributes(const ConditionalStreamReader
+                 ctype->setTypeFlags(ctype->typeFlags() | ComplexTypeEntry::DisableWrapper);
+         } else if (name == deleteInMainThreadAttribute) {
+             if (convertBoolean(attributes->takeAt(i).value(), deleteInMainThreadAttribute, false))
+-                ctype->setDeleteInMainThread(true);
++                ctype->setDeletionMode(TypeSystem::DeletionMode::DeleteInMainThread);
++        } else if (name == deleteInOwnerThreadAttribute) {
++            if (convertBoolean(attributes->takeAt(i).value(), deleteInOwnerThreadAttribute, false))
++                ctype->setDeletionMode(TypeSystem::DeletionMode::DeleteInQObjectOwnerThread);
+         } else if (name == qtMetaObjectFunctionsAttribute) {
+             if (!convertBoolean(attributes->takeAt(i).value(),
+                                 qtMetaObjectFunctionsAttribute, true))  {
+diff --git a/sources/shiboken6_generator/cmake/ShibokenGeneratorSetup.cmake b/sources/shiboken6_generator/cmake/ShibokenGeneratorSetup.cmake
+index 137824d15..7b7c46d6b 100644
+--- a/sources/shiboken6_generator/cmake/ShibokenGeneratorSetup.cmake
++++ b/sources/shiboken6_generator/cmake/ShibokenGeneratorSetup.cmake
+@@ -36,8 +36,11 @@ compute_config_py_values(shiboken6_VERSION)
+ 
+ shiboken_internal_set_python_site_packages()
+ 
++string(REGEX REPLACE "\\.[0-9]+\\.[0-9]+$" "" LLVM_VERSION "${LLVM_PACKAGE_VERSION}")
++
+ set_cmake_cxx_flags()
+-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D QT_NO_CAST_FROM_ASCII -D QT_NO_CAST_TO_ASCII")
++set(CMAKE_CXX_FLAGS
++    "${CMAKE_CXX_FLAGS} -D QT_NO_CAST_FROM_ASCII -D QT_NO_CAST_TO_ASCII -D LLVM_VERSION=${LLVM_VERSION}")
+ 
+ # Force usage of the C++17 standard
+ set(CMAKE_CXX_STANDARD 17)
+diff --git a/sources/shiboken6_generator/generator/qtdoc/qtdocgenerator.cpp b/sources/shiboken6_generator/generator/qtdoc/qtdocgenerator.cpp
+index dd9bec10a..2af321eee 100644
+--- a/sources/shiboken6_generator/generator/qtdoc/qtdocgenerator.cpp
++++ b/sources/shiboken6_generator/generator/qtdoc/qtdocgenerator.cpp
+@@ -889,6 +889,13 @@ bool QtDocGenerator::writeInjectDocumentation(TextStream &s,
+     return didSomething;
+ }
+ 
++// Reference with a custom name
++static QString inline toRef(const QString &fullName, const QString &displayName)
++{
++    return ":class:`"_L1 +  displayName + u'<' + fullName + ">`"_L1;
++}
++
++// Standard reference using unqualified class name
+ static QString inline toRef(const QString &t)
+ {
+     return ":class:`~"_L1 + t + u'`';
+@@ -972,6 +979,18 @@ QString QtDocGenerator::translateToPythonType(const AbstractMetaType &type,
+         return strType;
+     }
+ 
++    if (type.typeUsagePattern() == AbstractMetaType::SmartPointerPattern) {
++        auto ste = std::static_pointer_cast<const SmartPointerTypeEntry>(type.typeEntry());
++        const auto &instantiation = type.instantiations().constFirst();
++        auto instantiationTe = instantiation.typeEntry();
++        if (auto instantiationO = api().findSmartPointerInstantiation(ste, instantiation.typeEntry())) {
++            const QString &name = instantiationO->specialized->name();
++            return createRef
++                ? toRef(instantiation.fullName(), name) // link to the pointee
++                : name;
++        }
++    }
++
+     if (auto k = AbstractMetaClass::findClass(api().classes(), type.typeEntry()))
+         return createRef ? toRef(k->fullName()) : k->name();
+ 
+diff --git a/sources/shiboken6_generator/generator/shiboken/cppgenerator.cpp b/sources/shiboken6_generator/generator/shiboken/cppgenerator.cpp
+index 47c9f044b..f9e088139 100644
+--- a/sources/shiboken6_generator/generator/shiboken/cppgenerator.cpp
++++ b/sources/shiboken6_generator/generator/shiboken/cppgenerator.cpp
+@@ -4550,7 +4550,7 @@ QString CppGenerator::writeContainerConverterInitialization(TextStream &s,
+                                                             const ApiExtractorResult &api)
+ {
+     const auto cppSignature =
+-        QString::fromUtf8(QMetaObject::normalizedSignature(type.cppSignature().toUtf8()));
++        QString::fromUtf8(QMetaObject::normalizedSignature(type.cppSignature().toUtf8().constData()));
+     s << "// Register converter for type '" << cppSignature << "'.\n";
+     const QString converter = converterObject(type);
+     s << converter << " = Shiboken::Conversions::createConverter(";
+@@ -4716,32 +4716,57 @@ void CppGenerator::writeClassTypeFunction(TextStream &s,
+         << outdent << "}\n" << closeExternC;
+ }
+ 
++static QString getTpDealloc(const AbstractMetaClassCPtr &metaClass, bool isQApp)
++{
++    if (metaClass->isNamespace())
++        return u"Sbk_object_dealloc /* PYSIDE-832: Prevent replacement of \"0\" with subtype_dealloc. */"_s;
++    if (metaClass->hasPrivateDestructor())
++        return u"SbkDeallocWrapperWithPrivateDtor"_s;
++    if (isQApp)
++        return u"&SbkDeallocQAppWrapper"_s;
++    return u"&SbkDeallocWrapper"_s;
++}
++
++static QString getTpNew(const AbstractMetaClassCPtr &metaClass, bool isQApp)
++{
++    const bool onlyPrivCtor = !metaClass->hasNonPrivateConstructor();
++    if (metaClass->hasPrivateDestructor() || onlyPrivCtor) {
++        // tp_flags = u"Py_TPFLAGS_DEFAULT"_s;
++        // This is not generally possible, because PySide does not care about
++        // privacy the same way. This worked before the heap types were used,
++        // because inheritance is not really checked for static types.
++        // Instead, we check this at runtime, see SbkObjectType_tp_new.
++        if (metaClass->fullName().startsWith(u"PySide6.Qt")) {
++            // PYSIDE-595: No idea how to do non-inheritance correctly.
++            // Since that is only relevant in shiboken, I used a shortcut for
++            // PySide.
++            return u"SbkObject_tp_new"_s;
++        }
++        return u"SbkDummyNew /* PYSIDE-595: Prevent replacement of \"0\" with base->tp_new. */"_s;
++    }
++
++    if (isQApp)
++        return u"SbkQApp_tp_new"_s; // PYSIDE-571: need singleton app
++
++    return u"SbkObject_tp_new"_s;
++}
++
+ void CppGenerator::writeClassDefinition(TextStream &s,
+                                         const AbstractMetaClassCPtr &metaClass,
+                                         const GeneratorContext &classContext)
+ {
+-    QString tp_new;
+-    QString tp_dealloc;
+     QString tp_hash;
+     QString tp_call;
+     const QString className = cpythonBaseName(metaClass);
+ 
+-    bool onlyPrivCtor = !metaClass->hasNonPrivateConstructor();
+-
+     const bool isQApp = usePySideExtensions()
+         && inheritsFrom(metaClass, u"QCoreApplication"_s);
+ 
++    const QString tp_dealloc = getTpDealloc(metaClass, isQApp);
++
+     QString tp_flags = u"Py_TPFLAGS_DEFAULT"_s;
+     if (!metaClass->attributes().testFlag(AbstractMetaClass::FinalCppClass))
+         tp_flags += u"|Py_TPFLAGS_BASETYPE"_s;
+-    if (metaClass->isNamespace() || metaClass->hasPrivateDestructor()) {
+-        tp_dealloc = metaClass->hasPrivateDestructor() ?
+-                     u"SbkDeallocWrapperWithPrivateDtor"_s :
+-                     u"Sbk_object_dealloc /* PYSIDE-832: Prevent replacement of \"0\" with subtype_dealloc. */"_s;
+-    } else {
+-        tp_dealloc = isQApp
+-            ? u"&SbkDeallocQAppWrapper"_s : u"&SbkDeallocWrapper"_s;
+-    }
+ 
+     const AttroCheck attroCheck = checkAttroFunctionNeeds(metaClass);
+     const QString tp_getattro = (attroCheck & AttroCheckFlag::GetattroMask) != 0
+@@ -4749,29 +4774,8 @@ void CppGenerator::writeClassDefinition(TextStream &s,
+     const QString tp_setattro = (attroCheck & AttroCheckFlag::SetattroMask) != 0
+         ? cpythonSetattroFunctionName(metaClass) : QString();
+ 
+-    if (metaClass->hasPrivateDestructor() || onlyPrivCtor) {
+-        // tp_flags = u"Py_TPFLAGS_DEFAULT"_s;
+-        // This is not generally possible, because PySide does not care about
+-        // privacy the same way. This worked before the heap types were used,
+-        // because inheritance is not really checked for static types.
+-        // Instead, we check this at runtime, see SbkObjectType_tp_new.
+-        if (metaClass->fullName().startsWith(u"PySide6.Qt")) {
+-            // PYSIDE-595: No idea how to do non-inheritance correctly.
+-            // Since that is only relevant in shiboken, I used a shortcut for
+-            // PySide.
+-            tp_new = u"SbkObject_tp_new"_s;
+-        }
+-        else {
+-            tp_new = u"SbkDummyNew /* PYSIDE-595: Prevent replacement "
+-                      "of \"0\" with base->tp_new. */"_s;
+-        }
+-    }
+-    else if (isQApp) {
+-        tp_new = u"SbkQApp_tp_new"_s; // PYSIDE-571: need singleton app
+-    }
+-    else {
+-        tp_new = u"SbkObject_tp_new"_s;
+-    }
++    const QString tp_new = getTpNew(metaClass, isQApp);
++
+     tp_flags.append(u"|Py_TPFLAGS_HAVE_GC"_s);
+ 
+     QString tp_richcompare;
+@@ -5854,23 +5858,40 @@ void CppGenerator::writeSignatureStrings(TextStream &s,
+         << "#endif\n\n";
+ }
+ 
+-// Return the class name for which to invoke the destructor
+-QString CppGenerator::destructorClassName(const AbstractMetaClassCPtr &metaClass,
+-                                          const GeneratorContext &classContext)
++QString CppGenerator::callCppDestructor(const GeneratorContext &classContext,
++                                        const QString &dtorClassName)
++{
++    return "&Shiboken::callCppDestructor< "_L1
++            + Generator::globalScopePrefix(classContext)
++            + dtorClassName + " >"_L1;
++}
++
++// Return the function to invoke the destructor
++QString CppGenerator::destructorFunction(const AbstractMetaClassCPtr &metaClass,
++                                         const GeneratorContext &classContext)
+ {
+     if (metaClass->isNamespace() || metaClass->hasPrivateDestructor())
+-        return {};
++        return NULL_PTR;
+     if (classContext.forSmartPointer())
+-        return classContext.effectiveClassName();
+-    const bool isValue = metaClass->typeEntry()->isValue();
+-    const bool hasProtectedDestructor = metaClass->hasProtectedDestructor();
+-    if (((avoidProtectedHack() && hasProtectedDestructor) || isValue)
+-        && classContext.useWrapper()) {
+-        return classContext.wrapperName();
++        return callCppDestructor(classContext, classContext.effectiveClassName());
++
++    if (metaClass->typeEntry()->isValue() && classContext.useWrapper())
++        return callCppDestructor(classContext, classContext.wrapperName());
++
++    if (avoidProtectedHack() && metaClass->hasProtectedDestructor()) {
++        return classContext.useWrapper()
++            ? callCppDestructor(classContext, classContext.wrapperName())
++            : QString{NULL_PTR}; // Cannot call (happens with "disable-wrapper").
++    }
++
++    if (usePySideExtensions()
++            && metaClass->deletionMode() == TypeSystem::DeletionMode::DeleteInQObjectOwnerThread) {
++        if (!isQObject(metaClass))
++            throw Exception(msgOwnerThreadForNonQObject(metaClass));
++         return u"deferredDeleteQObject"_s;
+     }
+-    if (avoidProtectedHack() && hasProtectedDestructor)
+-        return {}; // Cannot call (happens with "disable-wrapper").
+-    return metaClass->qualifiedCppName();
++
++    return callCppDestructor(classContext, metaClass->qualifiedCppName());
+ }
+ 
+ // Return the base type entries for introduceWrapperType()
+@@ -5986,12 +6007,7 @@ void CppGenerator::writeClassRegister(TextStream &s,
+     s << '&' << pyTypePrefix << "_spec,\n";
+ 
+     // 5:cppObjDtor
+-    QString dtorClassName = destructorClassName(metaClass, classContext);
+-    if (dtorClassName.isEmpty())
+-        s << "nullptr,\n";
+-    else
+-        s << "&Shiboken::callCppDestructor< " << globalScopePrefix(classContext)
+-            << dtorClassName << " >,\n";
++    s << destructorFunction(metaClass, classContext) << ",\n";
+ 
+     // 7:baseTypes
+     s << pyTypeBasesVariable << ".object()," << '\n';
+@@ -6000,7 +6016,7 @@ void CppGenerator::writeClassRegister(TextStream &s,
+     QByteArrayList wrapperFlags;
+     if (enc)
+         wrapperFlags.append("Shiboken::ObjectType::WrapperFlags::InnerClass"_ba);
+-    if (metaClass->deleteInMainThread())
++    if (metaClass->deletionMode() == TypeSystem::DeletionMode::DeleteInMainThread)
+         wrapperFlags.append("Shiboken::ObjectType::WrapperFlags::DeleteInMainThread"_ba);
+     if (classTypeEntry->isValue())
+         wrapperFlags.append("Shiboken::ObjectType::WrapperFlags::Value"_ba);
+diff --git a/sources/shiboken6_generator/generator/shiboken/cppgenerator.h b/sources/shiboken6_generator/generator/shiboken/cppgenerator.h
+index 592f958f4..07cad1619 100644
+--- a/sources/shiboken6_generator/generator/shiboken/cppgenerator.h
++++ b/sources/shiboken6_generator/generator/shiboken/cppgenerator.h
+@@ -447,8 +447,10 @@ private:
+                             const GeneratorContext &classContext,
+                             const QString &signatures) const;
+     static QStringList pyBaseTypes(const AbstractMetaClassCPtr &metaClass);
+-    static QString destructorClassName(const AbstractMetaClassCPtr &metaClass,
+-                                       const GeneratorContext &classContext);
++    static QString callCppDestructor(const GeneratorContext &classContext,
++                                     const QString &dtorClassName);
++    static QString destructorFunction(const AbstractMetaClassCPtr &metaClass,
++                                      const GeneratorContext &classContext);
+     static void writeStaticFieldInitialization(TextStream &s,
+                                                const AbstractMetaClassCPtr &metaClass);
+     void writeClassDefinition(TextStream &s,
+diff --git a/testing/command.py b/testing/command.py
+index 9ef35ee20..be88c8519 100644
+--- a/testing/command.py
++++ b/testing/command.py
+@@ -142,9 +142,9 @@ def main():
+     global COIN_THRESHOLD
+     # create the top-level command parser
+     start_time = timer()
+-    all_projects = "shiboken6 pyside6".split()
+-    tested_projects = "shiboken6 pyside6".split()
+-    tested_projects_quoted = " ".join("'i'" for i in tested_projects)
++    all_projects = ["shiboken6_generator", "shiboken6", "pyside6"]
++    tested_projects = all_projects
++    tested_projects_quoted = " ".join(f'"{i}"' for i in tested_projects)
+     runs = COIN_TESTING
+     parser = argparse.ArgumentParser(
+         formatter_class=argparse.RawDescriptionHelpFormatter,
+diff --git a/testing/wheel_tester.py b/testing/wheel_tester.py
+index 5ac9333db..dc36a2b72 100644
+--- a/testing/wheel_tester.py
++++ b/testing/wheel_tester.py
+@@ -45,6 +45,13 @@ log.setLevel(logging.DEBUG)
+ NEW_WHEELS = False
+ 
+ 
++def is_pyenv_python():
++    pyenv_root = os.environ.get("PYENV_ROOT")
++    if pyenv_root and (resolved_exe := str(Path(sys.executable).resolve())):
++        return resolved_exe.startswith(pyenv_root)
++    return False
++
++
+ def find_executable(executable, command_line_value):
+     value = command_line_value
+     option_str = f"--{executable}"
+@@ -206,14 +213,16 @@ def run_nuitka_test(example):
+         raise RuntimeError(f"Failure running {example} with Nuitka.")
+ 
+ 
+-def _run_deploy_test(example, tmpdirname):
++def _run_deploy_test(example, tmpdirname, python_executable=None):
+     """Helper for running deployment and example."""
++    if python_executable is None:
++        python_executable = sys.executable
+     main_file = None
+     for py_file in example.glob("*.py"):
+         shutil.copy(py_file, tmpdirname)
+         if not main_file or py_file.name == "main.py":
+             main_file = py_file
+-    deploy_tool = Path(sys.executable).parent / "pyside6-deploy"
++    deploy_tool = Path(python_executable).parent / "pyside6-deploy"
+     cmd = [os.fspath(deploy_tool), "-f", main_file.name, "--init"]
+     if run_process(cmd) != 0:
+         raise RuntimeError("Error creating pysidedeploy.spec")
+@@ -243,7 +252,7 @@ def _run_deploy_test(example, tmpdirname):
+     return True
+ 
+ 
+-def run_deploy_test(example):
++def run_deploy_test(example, python_executable=None):
+     """Test pyside6-deploy."""
+     log.info(f"Running deploy test of {example}")
+     current_dir = Path.cwd()
+@@ -251,7 +260,7 @@ def run_deploy_test(example):
+     with tempfile.TemporaryDirectory() as tmpdirname:
+         try:
+             os.chdir(tmpdirname)
+-            result = _run_deploy_test(example, tmpdirname)
++            result = _run_deploy_test(example, tmpdirname, python_executable)
+         except RuntimeError as e:
+             log.error(str(e))
+             raise e
+@@ -328,8 +337,18 @@ def try_build_examples():
+     # disable for windows as it Nuitka --onefile deployment in Windows
+     # requires DependencyWalker. Download and installing will slow down
+     # Coin
+-    if sys.platform != "win32":
++    # Skip on macOS with pyenv Python: Nuitka 2.8+ fails to scan OpenSSL
++    # dependencies of pyenv-built _hashlib. Homebrew Python works.
++    # See https://github.com/Nuitka/Nuitka/issues/3777
++    if sys.platform != "win32" and not (sys.platform == "darwin" and is_pyenv_python()):
+         run_deploy_test(src_path)
++    elif sys.platform == "darwin" and is_pyenv_python():
++        alt_python = os.environ.get("ALTERNATIVE_PYTHON3_PATH")
++        if alt_python:
++            log.info(f"Using alternative Python for deploy test on macOS: {alt_python}")
++            run_deploy_test(src_path, python_executable=alt_python)
++        else:
++            log.info("Skipping deploy test on macOS with pyenv Python (Nuitka OpenSSL issue).")
+ 
+     if False:  # pre 6.4.1, kept for reference
+         # Nuitka is loaded by coin_build_instructions.py, but not when
